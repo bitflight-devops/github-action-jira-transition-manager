@@ -1,10 +1,10 @@
 /* eslint-disable security/detect-unsafe-regex */
 import * as core from '@actions/core'
-import {Context} from '@actions/github/lib/context'
-import {IssueBean, IssueTransition} from 'jira.js/out/version3/models'
+import { Context } from '@actions/github/lib/context'
+import { IssueBean, IssueTransition } from 'jira.js/out/version3/models'
 import _ from 'lodash'
 
-import {Args} from './@types'
+import { Args } from './@types'
 import Jira from './Jira'
 import TransitionEventManager from './TransitionEventManager'
 
@@ -58,7 +58,7 @@ export default class Issue {
         }
 
         this.transitionsLogString.push(
-          `{ id: ${transition.id}, name: ${transition.name} } transitions issue to '${stateName}' status.`
+          `{ id: ${transition.id}, name: ${transition.name} } transitions issue to '${stateName}' status.`,
         )
       }
     }
@@ -80,7 +80,7 @@ export default class Issue {
       }) as IssueTransition
       return {
         ...iT,
-        isGlobal: true
+        isGlobal: true,
       } as IssueTransition
     } else if (this.status) {
       return _.find(this.issueTransitions, t => {
@@ -109,7 +109,9 @@ export default class Issue {
         if (this.argv.failOnError) {
           throw error
         } else {
-          core.error(error)
+          if (error instanceof Error) {
+            core.error(error)
+          }
         }
       }
     } else {
@@ -124,7 +126,7 @@ export default class Issue {
       names: this.transitionNames,
       ids: this.transitionIds,
       status: this.status || (await this.getStatus(true)),
-      beforestatus: this.beforeStatus as string
+      beforestatus: this.beforeStatus as string,
     }
   }
 
@@ -139,7 +141,7 @@ export default class Issue {
   }
 
   async getTransitions(): Promise<IssueTransition[] | undefined> {
-    const {transitions} = await this.jira.getIssueTransitions(this.issue)
+    const { transitions } = await this.jira.getIssueTransitions(this.issue)
 
     if (transitions == null) {
       core.warning('No transitions found for issue')

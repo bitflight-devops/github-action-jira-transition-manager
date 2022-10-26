@@ -1,8 +1,8 @@
 import * as core from '@actions/core'
-import {Context} from '@actions/github/lib/context'
+import { Context } from '@actions/github/lib/context'
 
-import {Args, JiraConfig} from './@types/'
-import Issue, {IssueOutput, Issues} from './Issue'
+import { Args, JiraConfig } from './@types/'
+import Issue, { IssueOutput, Issues } from './Issue'
 import Jira from './Jira'
 
 const issuesList: Issues = []
@@ -15,7 +15,7 @@ export class Action {
     this.jira = new Jira({
       baseUrl: argv.config.baseUrl,
       token: argv.config.token,
-      email: argv.config.email
+      email: argv.config.email,
     })
 
     this.config = argv.config
@@ -24,7 +24,7 @@ export class Action {
   }
 
   async execute(): Promise<boolean> {
-    const {argv} = this
+    const { argv } = this
     const issueList = argv.issues.split(',')
     let successes = 0
     let failures = 0
@@ -37,10 +37,12 @@ export class Action {
         successes += 1
       } catch (error) {
         failures += 1
-        if (argv.failOnError) {
-          core.setFailed(error)
-        } else {
-          core.error(error)
+        if (error instanceof Error) {
+          if (argv.failOnError) {
+            core.setFailed(error)
+          } else {
+            core.error(error)
+          }
         }
       }
     }

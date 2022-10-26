@@ -45,13 +45,13 @@ This action will transition the list of Jira issues provided between states, or 
 <!-- start inputs -->
 
 | **Input**                   | **Description**                                                                                                           | **Default** | **Required** |
-| :-------------------------- | :------------------------------------------------------------------------------------------------------------------------ | :---------: | :----------: |
-| **`issues`**                | A comma delimited list of one or more Jira issues to be transitioned                                                      |             |   **true**   |
-| **`jira_transitions_yaml`** | YAML configuration that overrides the configuration in the `.github/github_event_jira_transitions.yml` file.              |             |  **false**   |
-| **`jira_base_url`**         | The Jira cloud base url including protocol i.e. 'https://company.atlassian.net' or use environment variable JIRA_BASE_URL |             |  **false**   |
-| **`jira_user_email`**       | The Jira cloud user email address or use environment variable JIRA_USER_EMAIL                                             |             |  **false**   |
-| **`jira_api_token`**        | The Jira cloud user api token or use environment variable JIRA_API_TOKEN                                                  |             |  **false**   |
-| **`fail_on_error`**         | If there is an error during transition, the action will error out.                                                        |             |  **false**   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------ |
+| **`issues`**                | A comma delimited list of one or more Jira issues to be transitioned                                                      |             | **true**     |
+| **`jira_transitions_yaml`** | YAML configuration that overrides the configuration in the `.github/github_event_jira_transitions.yml` file.              |             | **false**    |
+| **`jira_base_url`**         | The Jira cloud base url including protocol i.e. 'https://company.atlassian.net' or use environment variable JIRA_BASE_URL |             | **false**    |
+| **`jira_user_email`**       | The Jira cloud user email address or use environment variable JIRA_USER_EMAIL                                             |             | **false**    |
+| **`jira_api_token`**        | The Jira cloud user api token or use environment variable JIRA_API_TOKEN                                                  |             | **false**    |
+| **`fail_on_error`**         | If there is an error during transition, the action will error out.                                                        |             | **false**    |
 
 <!-- end inputs -->
 
@@ -59,9 +59,9 @@ This action will transition the list of Jira issues provided between states, or 
 
 <!-- start outputs -->
 
-| **Output**     | **Description**                                         | **Default** | **Required** |
-| :------------- | :------------------------------------------------------ | ----------- | ------------ |
-| `issueOutputs` | A JSON list of Jira Issues and their transition details |             |              |
+| \***\*Output\*\*** | \***\*Description\*\***                                 | \***\*Default\*\*** | \***\*Required\*\*** |
+| ------------------ | ------------------------------------------------------- | ------------------- | -------------------- |
+| `issueOutputs`     | A JSON list of Jira Issues and their transition details | undefined           | undefined            |
 
 <!-- end outputs -->
 
