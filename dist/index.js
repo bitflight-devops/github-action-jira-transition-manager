@@ -164,15 +164,15 @@ class Jira {
             authentication: {
                 basic: {
                     email: this.email,
-                    apiToken: this.token
-                }
-            }
+                    apiToken: this.token,
+                },
+            },
         });
     }
     async getIssue(issueId, query) {
         var _a, _b;
         const params = {
-            issueIdOrKey: issueId
+            issueIdOrKey: issueId,
         };
         if (query != null) {
             params.fields = (_a = query.fields) !== null && _a !== void 0 ? _a : [];
@@ -182,14 +182,14 @@ class Jira {
     }
     async getIssueTransitions(issueId) {
         const params = {
-            issueIdOrKey: issueId
+            issueIdOrKey: issueId,
         };
         return await this.client.issues.getTransitions(params);
     }
     async transitionIssue(issueId, data) {
         const params = {
             issueIdOrKey: issueId,
-            transition: data
+            transition: data,
         };
         return await this.client.issues.doTransition(params);
     }

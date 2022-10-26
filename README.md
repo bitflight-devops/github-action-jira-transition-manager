@@ -14,7 +14,7 @@ This action will transition the list of Jira issues provided between states, or 
 <!-- start usage -->
 
 ```yaml
-- uses: bitflight-devops/github-action-transition-jira-ticket@v1.0.2
+- uses: bitflight-devops/github-action-transition-jira-ticket@v1.1.0
   with:
     # A comma delimited list of one or more Jira issues to be transitioned
     issues: ''

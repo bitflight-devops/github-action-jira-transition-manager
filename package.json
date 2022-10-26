@@ -1,6 +1,6 @@
 {
   "name": "github-action-jira-transition-manager",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "This action will transition the list of Jira issues provided between states, or it will display the available transitions and the current issue state.",
   "main": "dist/index.js",
   "sideEffects": false,
