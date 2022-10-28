@@ -20,8 +20,8 @@
   "[ts]": {
     "editor.codeActionsOnSave": "source.fixAll.eslint"
   },
-  "javascript.format.semicolons": "remove",
-  "typescript.format.semicolons": "remove",
+  "javascript.format.semicolons": "ignore",
+  "typescript.format.semicolons": "ignore",
   "typescriptHero.imports.insertSemicolons": false,
   "typescript.preferences.quoteStyle": "single",
   "javascript.preferences.quoteStyle": "single",

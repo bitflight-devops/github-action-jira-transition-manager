@@ -12,25 +12,28 @@ const core = tslib_1.__importStar(__nccwpck_require__(42186));
 const lodash_1 = tslib_1.__importDefault(__nccwpck_require__(90250));
 const TransitionEventManager_1 = tslib_1.__importDefault(__nccwpck_require__(30903));
 class Issue {
+    issue;
+    projectName;
+    transitionNames = [];
+    transitionIds = [];
+    beforeStatus = null;
+    toStatus = null;
+    status = null;
+    jira;
+    issueObject = null;
+    issueTransitions = undefined;
+    transitionsLogString = [];
+    argv;
+    transitionEventManager;
     constructor(issue, jira, argv, context) {
-        var _a, _b;
-        this.transitionNames = [];
-        this.transitionIds = [];
-        this.beforeStatus = null;
-        this.toStatus = null;
-        this.status = null;
-        this.issueObject = null;
-        this.issueTransitions = undefined;
-        this.transitionsLogString = [];
         this.issue = issue;
-        const pmatch = issue.match(/(?<projectName>[a-zA-Z]{2,})-[0-9]{2,}/);
-        this.projectName = (_b = (_a = pmatch === null || pmatch === void 0 ? void 0 : pmatch.groups) === null || _a === void 0 ? void 0 : _a.projectName.toUpperCase()) !== null && _b !== void 0 ? _b : '';
+        const pmatch = issue.match(/(?<projectName>[A-Za-z]{2,})-\d{2,}/);
+        this.projectName = pmatch?.groups?.projectName.toUpperCase() ?? '';
         this.jira = jira;
         this.argv = argv;
         this.transitionEventManager = new TransitionEventManager_1.default(context, jira, argv);
     }
     async build() {
-        var _a;
         await this.getJiraIssueObject();
         this.beforeStatus = await this.getStatus();
         this.toStatus = this.transitionEventManager.githubEventToState(this.projectName);
@@ -44,8 +47,8 @@ class Issue {
                     this.transitionNames.push(transition.name);
                 }
                 let stateName = 'unknown';
-                if (transition['to'] !== undefined) {
-                    stateName = (_a = transition['to'].name) !== null && _a !== void 0 ? _a : 'unknown';
+                if (transition.to !== undefined) {
+                    stateName = transition.to.name ?? 'unknown';
                 }
                 this.transitionsLogString.push(`{ id: ${transition.id}, name: ${transition.name} } transitions issue to '${stateName}' status.`);
             }
@@ -55,13 +58,13 @@ class Issue {
     requiresTransition() {
         if (this.status === null)
             return false;
+        // check for current status vs ignored status
         return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.status);
     }
     transitionToApply() {
         if (this.toStatus) {
-            const iT = lodash_1.default.find(this.issueTransitions, t => {
-                var _a, _b;
-                if (t.to && ((_a = t.to.name) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === ((_b = this.toStatus) === null || _b === void 0 ? void 0 : _b.toLowerCase())) {
+            const iT = lodash_1.default.find(this.issueTransitions, (t) => {
+                if (t.to && t.to.name?.toLowerCase() === this.toStatus?.toLowerCase()) {
                     return true;
                 }
             });
@@ -70,21 +73,18 @@ class Issue {
                 isGlobal: true,
             };
         }
-        else if (this.status) {
-            return lodash_1.default.find(this.issueTransitions, t => {
-                var _a, _b, _c;
-                if (((_b = (_a = t.name) === null || _a === void 0 ? void 0 : _a.toLowerCase) === null || _b === void 0 ? void 0 : _b.call(_a)) === ((_c = this.status) === null || _c === void 0 ? void 0 : _c.toLowerCase())) {
+        if (this.status) {
+            return lodash_1.default.find(this.issueTransitions, (t) => {
+                if (t.name?.toLowerCase?.() === this.status?.toLowerCase()) {
                     return true;
                 }
             });
         }
-        else {
-            return undefined;
-        }
+        return undefined;
     }
     async transition() {
         const transitionToApply = this.transitionToApply();
-        if (transitionToApply === null || transitionToApply === void 0 ? void 0 : transitionToApply.name) {
+        if (transitionToApply?.name) {
             core.info(`${this.issue} will attempt to transition to: ${JSON.stringify(transitionToApply)}`);
             try {
                 core.info(`Applying transition for ${this.issue}`);
@@ -97,10 +97,8 @@ class Issue {
                 if (this.argv.failOnError) {
                     throw error;
                 }
-                else {
-                    if (error instanceof Error) {
-                        core.error(error);
-                    }
+                else if (error instanceof Error) {
+                    core.error(error);
                 }
             }
         }
@@ -142,7 +140,7 @@ class Issue {
     }
 }
 exports["default"] = Issue;
-//# sourceMappingURL=Issue.js.map
+
 
 /***/ }),
 
@@ -154,6 +152,10 @@ exports["default"] = Issue;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const jira_js_1 = __nccwpck_require__(74689);
 class Jira {
+    baseUrl;
+    token;
+    email;
+    client;
     constructor(conf) {
         this.baseUrl = conf.baseUrl;
         this.token = conf.token;
@@ -170,32 +172,31 @@ class Jira {
         });
     }
     async getIssue(issueId, query) {
-        var _a, _b;
         const params = {
             issueIdOrKey: issueId,
         };
         if (query != null) {
-            params.fields = (_a = query.fields) !== null && _a !== void 0 ? _a : [];
-            params.expand = (_b = query.expand) !== null && _b !== void 0 ? _b : undefined;
+            params.fields = query.fields ?? [];
+            params.expand = query.expand ?? undefined;
         }
-        return await this.client.issues.getIssue(params);
+        return this.client.issues.getIssue(params);
     }
     async getIssueTransitions(issueId) {
         const params = {
             issueIdOrKey: issueId,
         };
-        return await this.client.issues.getTransitions(params);
+        return this.client.issues.getTransitions(params);
     }
     async transitionIssue(issueId, data) {
         const params = {
             issueIdOrKey: issueId,
             transition: data,
         };
-        return await this.client.issues.doTransition(params);
+        return this.client.issues.doTransition(params);
     }
 }
 exports["default"] = Jira;
-//# sourceMappingURL=Jira.js.map
+
 
 /***/ }),
 
@@ -204,11 +205,12 @@ exports["default"] = Jira;
 
 "use strict";
 
+/* eslint-disable @typescript-eslint/prefer-for-of */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.checkConditions = exports.objEquals = exports.isObject = void 0;
 const tslib_1 = __nccwpck_require__(4351);
+const fs = tslib_1.__importStar(__nccwpck_require__(87561));
 const core = tslib_1.__importStar(__nccwpck_require__(42186));
-const fs = tslib_1.__importStar(__nccwpck_require__(57147));
 const YAML = tslib_1.__importStar(__nccwpck_require__(44083));
 const fs_helper_1 = __nccwpck_require__(37219);
 const isObject = (v) => {
@@ -221,23 +223,20 @@ function objEquals(v1, v2) {
 }
 exports.objEquals = objEquals;
 function checkConditions(a, b) {
-    for (const k of Object.keys(b)) {
-        if ((0, exports.isObject)(a[k]) && (0, exports.isObject)(b[k]) ? checkConditions(a[k], b[k]) : objEquals(a[k], b[k])) {
-            return true;
-        }
-        else {
-            return false;
-        }
-    }
-    return false;
+    return Object.keys(b).some((k) => {
+        return (0, exports.isObject)(a[k]) && (0, exports.isObject)(b[k]) ? checkConditions(a[k], b[k]) : objEquals(a[k], b[k]);
+    });
 }
 exports.checkConditions = checkConditions;
 const yamlConfigPath = '.github/github_event_jira_transitions.';
 class TransitionEventManager {
+    context;
+    projects = {};
+    jira;
+    failOnError = false;
+    ignoredStates;
+    listenForEvents = [];
     constructor(context, jira, argv) {
-        this.projects = {};
-        this.failOnError = false;
-        this.listenForEvents = [];
         this.jira = jira;
         this.context = context;
         this.failOnError = argv.failOnError;
@@ -246,38 +245,38 @@ class TransitionEventManager {
         if (argv.jiraTransitionsYaml) {
             yml = argv.jiraTransitionsYaml;
         }
-        else if ((0, fs_helper_1.fileExistsSync)(yamlConfigPath + 'yml')) {
-            yml = fs.readFileSync(yamlConfigPath + 'yml', 'utf8');
+        else if ((0, fs_helper_1.fileExistsSync)(`${yamlConfigPath}yml`)) {
+            yml = fs.readFileSync(`${yamlConfigPath}yml`, 'utf8');
         }
-        else if ((0, fs_helper_1.fileExistsSync)(yamlConfigPath + 'yaml')) {
-            yml = fs.readFileSync(yamlConfigPath + 'yaml', 'utf8');
+        else if ((0, fs_helper_1.fileExistsSync)(`${yamlConfigPath}yaml`)) {
+            yml = fs.readFileSync(`${yamlConfigPath}yaml`, 'utf8');
         }
         else {
             throw new Error(`No GitHub event configuration found as an input or as yml file in ${yamlConfigPath}`);
         }
         const yObj = YAML.parse(yml);
-        if (!Object.prototype.hasOwnProperty.call(yObj, 'projects')) {
+        if ('projects' in yObj && yObj.projects) {
+            this.projects = yObj.projects;
+            for (const [projectName, transitionEvent] of Object.entries(this.projects)) {
+                const pName = projectName.toUpperCase();
+                core.info(`Project ${pName} configuration loaded`);
+                if (transitionEvent.ignored_states) {
+                    this.ignoredStates.set(pName, transitionEvent.ignored_states);
+                }
+            }
+        }
+        else {
             const estring = `The YAML config file doesn't have a 'projects' key`;
             if (this.failOnError) {
                 throw new Error(estring);
             }
             else {
                 core.warning(estring);
-                return this;
             }
         }
-        this.projects = yObj.projects;
-        Object.entries(this.projects).forEach(([projectName, transitionEvent]) => {
-            const pName = projectName.toUpperCase();
-            core.info(`Project ${pName} configuration loaded`);
-            if (transitionEvent.ignored_states) {
-                this.ignoredStates.set(pName, transitionEvent.ignored_states);
-            }
-        });
     }
     getIgnoredStates(currentProject) {
-        var _a;
-        return (_a = this.ignoredStates.get(currentProject.toUpperCase())) !== null && _a !== void 0 ? _a : [];
+        return this.ignoredStates.get(currentProject.toUpperCase()) ?? [];
     }
     githubEventToState(currentProjectName) {
         core.debug(`starting githubEventToState(${currentProjectName})`);
@@ -303,7 +302,7 @@ class TransitionEventManager {
     }
 }
 exports["default"] = TransitionEventManager;
-//# sourceMappingURL=TransitionEventManager.js.map
+
 
 /***/ }),
 
@@ -318,8 +317,11 @@ const tslib_1 = __nccwpck_require__(4351);
 const core = tslib_1.__importStar(__nccwpck_require__(42186));
 const Issue_1 = tslib_1.__importDefault(__nccwpck_require__(67827));
 const Jira_1 = tslib_1.__importDefault(__nccwpck_require__(21665));
-const issuesList = [];
 class Action {
+    jira;
+    config;
+    argv;
+    githubEvent;
     constructor(githubEvent, argv) {
         this.jira = new Jira_1.default({
             baseUrl: argv.config.baseUrl,
@@ -330,39 +332,44 @@ class Action {
         this.argv = argv;
         this.githubEvent = githubEvent;
     }
+    async transitionIssue(issueObj) {
+        return issueObj
+            .transition()
+            .then(async () => {
+            return issueObj.getOutputs();
+        })
+            .catch((error) => {
+            if (error instanceof Error) {
+                if (this.argv.failOnError) {
+                    core.setFailed(error);
+                }
+                else {
+                    core.error(error);
+                }
+            }
+        });
+    }
     async execute() {
-        const { argv } = this;
+        const { argv, jira, githubEvent } = this;
         const issueList = argv.issues.split(',');
         let successes = 0;
         let failures = 0;
-        for (const issueId of issueList) {
-            const issue = await new Issue_1.default(issueId.trim(), this.jira, this.argv, this.githubEvent).build();
-            issuesList.push(issue);
-            try {
-                await issue.transition();
-                successes += 1;
-            }
-            catch (error) {
-                failures += 1;
-                if (error instanceof Error) {
-                    if (argv.failOnError) {
-                        core.setFailed(error);
-                    }
-                    else {
-                        core.error(error);
-                    }
-                }
-            }
+        const applyIssueList = [];
+        for (const issueKey of issueList) {
+            applyIssueList.push(new Issue_1.default(issueKey.trim(), jira, argv, githubEvent)
+                .build()
+                .then(async (issueObj) => this.transitionIssue(issueObj)));
         }
-        async function getOutputs() {
-            return Promise.all(issuesList.map(async (i) => await i.getOutputs()));
-        }
-        core.setOutput('issueOutputs', JSON.stringify(await getOutputs()));
-        return failures === 0 && issueList.length === successes;
+        const issueOutputs = await Promise.all(applyIssueList).then((iList) => iList.filter(Boolean));
+        failures = issueList.length - issueOutputs.length;
+        successes = issueOutputs.length;
+        core.info(`Successes: ${successes} Failures: ${failures}`);
+        core.setOutput('issueOutputs', JSON.stringify(issueOutputs));
+        return successes > 0;
     }
 }
 exports.Action = Action;
-//# sourceMappingURL=action.js.map
+
 
 /***/ }),
 
@@ -374,8 +381,8 @@ exports.Action = Action;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.loadFileSync = exports.fileExistsSync = exports.existsSync = exports.directoryExistsSync = void 0;
 const tslib_1 = __nccwpck_require__(4351);
-const fs = tslib_1.__importStar(__nccwpck_require__(57147));
-const fs_1 = __nccwpck_require__(57147);
+const fs = tslib_1.__importStar(__nccwpck_require__(87561));
+const node_fs_1 = __nccwpck_require__(87561);
 function directoryExistsSync(path, required) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
@@ -418,7 +425,7 @@ function loadFileSync(path) {
     }
     try {
         if (fileExistsSync(path)) {
-            return (0, fs_1.readFileSync)(path, 'utf8');
+            return (0, node_fs_1.readFileSync)(path, 'utf8');
         }
     }
     catch (error) {
@@ -427,7 +434,7 @@ function loadFileSync(path) {
     throw new Error(`Encountered an error when reading file '${path}': file not there`);
 }
 exports.loadFileSync = loadFileSync;
-//# sourceMappingURL=fs-helper.js.map
+
 
 /***/ }),
 
@@ -439,22 +446,21 @@ exports.loadFileSync = loadFileSync;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getInputs = void 0;
 const tslib_1 = __nccwpck_require__(4351);
+const path = tslib_1.__importStar(__nccwpck_require__(49411));
 const core = tslib_1.__importStar(__nccwpck_require__(42186));
-const path = tslib_1.__importStar(__nccwpck_require__(71017));
 const fsHelper = tslib_1.__importStar(__nccwpck_require__(37219));
 function getInputs() {
-    var _a, _b, _c, _d, _e, _f;
     const result = {};
     const jiraConfig = {};
-    jiraConfig.baseUrl = (_b = (_a = process.env.JIRA_BASE_URL) !== null && _a !== void 0 ? _a : core.getInput('jira_base_url')) !== null && _b !== void 0 ? _b : null;
+    jiraConfig.baseUrl = process.env.JIRA_BASE_URL ?? core.getInput('jira_base_url') ?? null;
     if (!jiraConfig.baseUrl) {
         throw new Error('JIRA_BASE_URL env not defined, or supplied as action input jira_base_url');
     }
-    jiraConfig.token = (_d = (_c = process.env.JIRA_API_TOKEN) !== null && _c !== void 0 ? _c : core.getInput('jira_api_token')) !== null && _d !== void 0 ? _d : null;
+    jiraConfig.token = process.env.JIRA_API_TOKEN ?? core.getInput('jira_api_token') ?? null;
     if (!jiraConfig.token) {
         throw new Error('JIRA_API_TOKEN env not defined, or supplied as action input jira_api_token');
     }
-    jiraConfig.email = (_f = (_e = process.env.JIRA_USER_EMAIL) !== null && _e !== void 0 ? _e : core.getInput('jira_user_email')) !== null && _f !== void 0 ? _f : null;
+    jiraConfig.email = process.env.JIRA_USER_EMAIL ?? core.getInput('jira_user_email') ?? null;
     if (!jiraConfig.email) {
         throw new Error('JIRA_USER_EMAIL env not defined, or supplied as action input jira_user_email');
     }
@@ -462,6 +468,7 @@ function getInputs() {
     result.issues = core.getInput('issues');
     result.failOnError = core.getInput('fail_on_error') === 'true';
     core.debug(`issues = ${result.issues}`);
+    // GitHub workspace
     let githubWorkspacePath = process.env.GITHUB_WORKSPACE;
     if (!githubWorkspacePath) {
         throw new Error('GITHUB_WORKSPACE not defined');
@@ -474,7 +481,7 @@ function getInputs() {
     return result;
 }
 exports.getInputs = getInputs;
-//# sourceMappingURL=input-helper.js.map
+
 
 /***/ }),
 
@@ -23203,6 +23210,10 @@ class Dashboards {
             const config = {
                 url: `/rest/api/2/dashboard/${parameters.dashboardId}/items/${parameters.itemId}/properties/${parameters.propertyKey}`,
                 method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                data: parameters.body,
             };
             return this.client.sendRequest(config, callback);
         });
@@ -41823,6 +41834,10 @@ class Dashboards {
             const config = {
                 url: `/rest/api/3/dashboard/${parameters.dashboardId}/items/${parameters.itemId}/properties/${parameters.propertyKey}`,
                 method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                data: parameters.body,
             };
             return this.client.sendRequest(config, callback);
         });
@@ -84624,6 +84639,22 @@ module.exports = require("net");
 
 /***/ }),
 
+/***/ 87561:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:fs");
+
+/***/ }),
+
+/***/ 49411:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:path");
+
+/***/ }),
+
 /***/ 22037:
 /***/ ((module) => {
 
@@ -93155,10 +93186,10 @@ const input_helper_1 = __nccwpck_require__(45480);
 async function exec() {
     await new action_1.Action(github.context, (0, input_helper_1.getInputs)()).execute();
 }
-exec().catch(error => {
+exec().catch((error) => {
     core.setFailed(error);
 });
-//# sourceMappingURL=index.js.map
+
 })();
 
 module.exports = __webpack_exports__;
