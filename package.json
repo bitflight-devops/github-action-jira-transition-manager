@@ -82,7 +82,7 @@
     "@types/js-yaml": "^4.0.5",
     "@types/lodash": "^4.14.186",
     "@types/nconf": "^0.10.3",
-    "@types/node": "^18.11.7",
+    "@types/node": "^18.11.10",
     "@types/node-fetch": "^2.6.2",
     "@typescript-eslint/eslint-plugin": "^5.41.0",
     "@typescript-eslint/parser": "^5.41.0",
