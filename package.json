@@ -75,7 +75,7 @@
   "devDependencies": {
     "@commitlint/cli": "^17.1.2",
     "@commitlint/config-conventional": "^17.1.0",
-    "@commitlint/prompt": "^17.1.2",
+    "@commitlint/prompt": "^17.5.0",
     "@github/prettier-config": "^0.0.4",
     "@tsconfig/node16": "^1.0.3",
     "@types/jest": "^29.2.0",
