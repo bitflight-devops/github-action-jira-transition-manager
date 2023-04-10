@@ -3550,10 +3550,10 @@ eslint-plugin-sonarjs@^0.16.0:
   resolved "https://registry.yarnpkg.com/eslint-plugin-sonarjs/-/eslint-plugin-sonarjs-0.16.0.tgz#227651fea8a7c82b40156a1d70d52d64ea058dba"
   integrity sha512-al8ojAzcQW8Eu0tWn841ldhPpPcjrJ59TzzTfAVWR45bWvdAASCmrGl8vK0MWHyKVDdC0i17IGbtQQ1KgxLlVA==
 
-eslint-plugin-sort-class-members@^1.15.2:
-  version "1.15.2"
-  resolved "https://registry.yarnpkg.com/eslint-plugin-sort-class-members/-/eslint-plugin-sort-class-members-1.15.2.tgz#3a529258cb95f5a97ddc682a12a4fae12626bc64"
-  integrity sha512-QDbNL3VY8yFhLsa951zN6eEdul3jpH2slOIWIxbmDlsdZ71sqVDvboUq3egWjqmPeLg5eaxCmWOTLVK3gOJSfQ==
+eslint-plugin-sort-class-members@^1.17.0:
+  version "1.17.0"
+  resolved "https://registry.yarnpkg.com/eslint-plugin-sort-class-members/-/eslint-plugin-sort-class-members-1.17.0.tgz#6b801091434a65e0e53b40c633f7f327eb1d3162"
+  integrity sha512-VnWa5a7nUhIQ5NDbchLAGLokOY3YCH5B2vIaus9Eq9jPSWYRRRH4MMBjrz+S+RSeMIOQOXI4tDfSZ4WcmQ5RIg==
 
 eslint-plugin-switch-case@^1.1.2:
   version "1.1.2"
