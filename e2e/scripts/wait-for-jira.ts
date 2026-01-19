@@ -47,9 +47,7 @@ async function waitForJira(): Promise<void> {
     } catch (error) {
       lastError = error as Error;
       const elapsed = Math.round((Date.now() - startTime) / 1000);
-      console.log(
-        `⏳ Waiting... (${elapsed}s/${timeout / 1000}s) - ${lastError.message}`,
-      );
+      console.log(`⏳ Waiting... (${elapsed}s/${timeout / 1000}s) - ${lastError.message}`);
       await sleep(pollInterval);
     }
   }

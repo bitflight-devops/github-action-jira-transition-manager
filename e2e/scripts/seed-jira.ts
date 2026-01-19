@@ -15,28 +15,19 @@ async function seedJira(): Promise<void> {
   try {
     // 1. Ensure project exists
     console.log(`Ensuring project ${config.test.projectKey} exists...`);
-    const project = await client.ensureProject(
-      config.test.projectKey,
-      config.test.projectName,
-    );
+    const project = await client.ensureProject(config.test.projectKey, config.test.projectName);
     console.log(`✓ Project: ${project.key} - ${project.name}`);
 
     // 2. Ensure initial version exists
     console.log(`Ensuring version ${config.test.initialVersion} exists...`);
-    const version = await client.ensureVersion(
-      config.test.projectKey,
-      config.test.initialVersion,
-    );
+    const version = await client.ensureVersion(config.test.projectKey, config.test.initialVersion);
     console.log(`✓ Version: ${version.name} (ID: ${version.id})`);
 
     // 3. Ensure test issue exists
     console.log('Ensuring test issue exists...');
-    const issue = await client.ensureIssue(
-      config.test.projectKey,
-      'E2E Test Issue',
-      config.test.issueType,
-      [config.test.initialVersion],
-    );
+    const issue = await client.ensureIssue(config.test.projectKey, 'E2E Test Issue', config.test.issueType, [
+      config.test.initialVersion,
+    ]);
     console.log(`✓ Issue: ${issue.key} - ${issue.fields.summary}`);
 
     console.log('\n✓ Seeding complete!');

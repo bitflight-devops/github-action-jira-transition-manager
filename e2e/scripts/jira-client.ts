@@ -49,29 +49,22 @@ export class JiraE2EClient {
 
     // Set up authentication based on type
     if (config.jira.auth.type === 'basic') {
-      const credentials = Buffer.from(
-        `${config.jira.auth.username}:${config.jira.auth.password}`,
-      ).toString('base64');
+      const credentials = Buffer.from(`${config.jira.auth.username}:${config.jira.auth.password}`).toString('base64');
       this.authHeader = `Basic ${credentials}`;
     } else if (config.jira.auth.type === 'cloud') {
-      const credentials = Buffer.from(
-        `${config.jira.auth.email}:${config.jira.auth.apiToken}`,
-      ).toString('base64');
+      const credentials = Buffer.from(`${config.jira.auth.email}:${config.jira.auth.apiToken}`).toString('base64');
       this.authHeader = `Basic ${credentials}`;
     } else {
       throw new Error(`Unsupported auth type: ${config.jira.auth.type}`);
     }
   }
 
-  private async request<T>(
-    path: string,
-    options: RequestInit = {},
-  ): Promise<T> {
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
-      Authorization: this.authHeader,
+      'Authorization': this.authHeader,
       'Content-Type': 'application/json',
-      Accept: 'application/json',
+      'Accept': 'application/json',
       ...((options.headers as Record<string, string>) || {}),
     };
 
@@ -82,9 +75,7 @@ export class JiraE2EClient {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(
-        `Jira API error: ${response.status} ${response.statusText}\n${text}`,
-      );
+      throw new Error(`Jira API error: ${response.status} ${response.statusText}\n${text}`);
     }
 
     // Handle empty responses
@@ -112,10 +103,7 @@ export class JiraE2EClient {
   /**
    * Get or create a project
    */
-  async ensureProject(
-    key: string,
-    name: string,
-  ): Promise<JiraProject> {
+  async ensureProject(key: string, name: string): Promise<JiraProject> {
     try {
       // Try to get existing project
       return await this.request<JiraProject>(`/rest/api/2/project/${key}`);
@@ -138,18 +126,13 @@ export class JiraE2EClient {
    * List all versions for a project
    */
   async listProjectVersions(projectKey: string): Promise<JiraVersion[]> {
-    return this.request<JiraVersion[]>(
-      `/rest/api/2/project/${projectKey}/versions`,
-    );
+    return this.request<JiraVersion[]>(`/rest/api/2/project/${projectKey}/versions`);
   }
 
   /**
    * Create a version in a project
    */
-  async createVersion(
-    projectKey: string,
-    versionName: string,
-  ): Promise<JiraVersion> {
+  async createVersion(projectKey: string, versionName: string): Promise<JiraVersion> {
     return this.request<JiraVersion>('/rest/api/2/version', {
       method: 'POST',
       body: JSON.stringify({
@@ -164,10 +147,7 @@ export class JiraE2EClient {
   /**
    * Ensure a version exists (get or create)
    */
-  async ensureVersion(
-    projectKey: string,
-    versionName: string,
-  ): Promise<JiraVersion> {
+  async ensureVersion(projectKey: string, versionName: string): Promise<JiraVersion> {
     const versions = await this.listProjectVersions(projectKey);
     const existing = versions.find((v) => v.name === versionName);
 
@@ -209,13 +189,10 @@ export class JiraE2EClient {
       fields.fixVersions = fixVersions.map((name) => ({ name }));
     }
 
-    const response = await this.request<{ key: string; id: string }>(
-      '/rest/api/2/issue',
-      {
-        method: 'POST',
-        body: JSON.stringify({ fields }),
-      },
-    );
+    const response = await this.request<{ key: string; id: string }>('/rest/api/2/issue', {
+      method: 'POST',
+      body: JSON.stringify({ fields }),
+    });
 
     // Get the full issue details
     return this.getIssue(response.key);
@@ -232,10 +209,7 @@ export class JiraE2EClient {
   /**
    * Update issue fields
    */
-  async updateIssue(
-    issueKey: string,
-    fields: Record<string, unknown>,
-  ): Promise<void> {
+  async updateIssue(issueKey: string, fields: Record<string, unknown>): Promise<void> {
     await this.request(`/rest/api/2/issue/${issueKey}`, {
       method: 'PUT',
       body: JSON.stringify({ fields }),
