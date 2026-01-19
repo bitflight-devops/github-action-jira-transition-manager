@@ -104,3 +104,7 @@ typings/
 
 # TernJS port file
 .tern-port
+
+# Docker volumes and test artifacts
+docker-compose.override.yml
+jira-data/

@@ -1,0 +1,104 @@
+name: E2E Tests with Jira Container
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  e2e-tests:
+    name: E2E Tests with Real Jira
+    runs-on: ubuntu-latest
+    
+    env:
+      JIRA_BASE_URL: http://localhost:8080
+      JIRA_USER_EMAIL: admin@example.com
+      JIRA_API_TOKEN: admin
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6.2.0
+        with:
+          node-version: '16.18.0'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Start Jira container
+        run: |
+          docker-compose up -d
+          echo "Waiting for Jira to start..."
+
+      - name: Wait for Jira to be healthy
+        run: |
+          echo "Waiting for Jira container to be healthy..."
+          timeout=300
+          elapsed=0
+          interval=10
+          
+          while [ $elapsed -lt $timeout ]; do
+            if docker-compose ps | grep -q "healthy"; then
+              echo "Jira container is healthy!"
+              break
+            fi
+            echo "Waiting... ($elapsed seconds elapsed)"
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "Timeout waiting for Jira to be healthy"
+            docker-compose logs jira
+            exit 1
+          fi
+
+      - name: Wait additional time for Jira initialization
+        run: |
+          echo "Giving Jira additional time to fully initialize..."
+          sleep 30
+
+      - name: Check Jira status
+        run: |
+          echo "Checking Jira availability..."
+          curl -v http://localhost:8080/status || true
+          docker-compose logs jira | tail -50
+
+      - name: Build TypeScript
+        run: yarn run build
+
+      - name: Seed Jira with test data
+        run: |
+          echo "Seeding Jira with test data..."
+          npx ts-node __tests__/fixtures/seed-jira.ts
+        env:
+          JIRA_BASE_URL: ${{ env.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ env.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
+
+      - name: Run E2E tests
+        run: |
+          yarn test __tests__/e2e.test.ts
+        env:
+          JIRA_BASE_URL: ${{ env.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ env.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ env.JIRA_API_TOKEN }}
+          JIRA_TEST_ISSUES: DVPS-1,DVPS-2
+
+      - name: Show Jira logs on failure
+        if: failure()
+        run: |
+          echo "Jira container logs:"
+          docker-compose logs jira
+
+      - name: Stop Jira container
+        if: always()
+        run: docker-compose down -v
