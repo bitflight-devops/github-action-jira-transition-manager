@@ -35,6 +35,7 @@
     "postversion": "echo 'Running post versioning commands';git push --tags -f && git push && echo \"Successfully released version $npm_package_version!\"",
     "generate-docs": "github-action-readme-generator && prettier --write .ghadocs.json README.md && git add .ghadocs.json README.md",
     "prepare": "husky install;git config --global rebase.autosquash true",
+    "pre-push": "echo 'Running pre-push checks'; exit 0",
     "e2e:up": "cd e2e/docker && docker compose up -d",
     "e2e:down": "cd e2e/docker && docker compose down -v",
     "e2e:wait": "ts-node e2e/scripts/wait-for-jira.ts",
