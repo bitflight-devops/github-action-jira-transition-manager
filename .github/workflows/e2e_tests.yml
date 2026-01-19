@@ -14,12 +14,12 @@ jobs:
   e2e-tests:
     name: E2E Tests with Real Jira
     runs-on: ubuntu-latest
-    
+
     env:
       JIRA_BASE_URL: http://localhost:8080
       JIRA_USER_EMAIL: admin@example.com
       JIRA_API_TOKEN: admin
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -44,7 +44,7 @@ jobs:
           timeout=300
           elapsed=0
           interval=10
-          
+
           while [ $elapsed -lt $timeout ]; do
             if docker-compose ps | grep -q "healthy"; then
               echo "Jira container is healthy!"
@@ -54,7 +54,7 @@ jobs:
             sleep $interval
             elapsed=$((elapsed + interval))
           done
-          
+
           if [ $elapsed -ge $timeout ]; then
             echo "Timeout waiting for Jira to be healthy"
             docker-compose logs jira

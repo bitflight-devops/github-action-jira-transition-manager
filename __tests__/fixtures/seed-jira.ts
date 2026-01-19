@@ -40,12 +40,17 @@ export class JiraSeeder {
     console.log('Waiting for Jira to be ready...');
     for (let i = 0; i < maxRetries; i++) {
       try {
+        // eslint-disable-next-line no-await-in-loop
         await this.client.myself.getCurrentUser();
         console.log('Jira is ready!');
         return;
-      } catch (error) {
+        // eslint-disable-next-line unicorn/prefer-optional-catch-binding
+      } catch {
         console.log(`Attempt ${i + 1}/${maxRetries}: Jira not ready yet...`);
-        await new Promise((resolve) => setTimeout(resolve, retryInterval));
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => {
+          setTimeout(resolve, retryInterval);
+        });
       }
     }
     throw new Error('Jira did not become ready in time');
@@ -63,7 +68,10 @@ export class JiraSeeder {
       console.log(`Project ${project.key} created successfully`);
       return result;
     } catch (error: any) {
-      if (error.response?.status === 400 && error.response?.data?.errorMessages?.includes('A project with that name already exists.')) {
+      if (
+        error.response?.status === 400 &&
+        error.response?.data?.errorMessages?.includes('A project with that name already exists.')
+      ) {
         console.log(`Project ${project.key} already exists, skipping...`);
         return null;
       }
@@ -73,7 +81,10 @@ export class JiraSeeder {
 
   async getProjectId(projectKey: string): Promise<string> {
     const project = await this.client.projects.getProject({ projectIdOrKey: projectKey });
-    return project.id as string;
+    if (!project.id) {
+      throw new Error(`Project ${projectKey} does not have an ID`);
+    }
+    return project.id;
   }
 
   async createIssue(issueData: IssueData): Promise<any> {
@@ -141,6 +152,7 @@ export class JiraSeeder {
       ];
 
       for (const project of projects) {
+        // eslint-disable-next-line no-await-in-loop
         await this.createProject(project);
       }
 
@@ -180,13 +192,14 @@ export class JiraSeeder {
 
       const createdIssues = [];
       for (const issueData of testIssues) {
+        // eslint-disable-next-line no-await-in-loop
         const issue = await this.createIssue(issueData);
         createdIssues.push(issue);
       }
 
       console.log('\n=== Test Data Summary ===');
-      console.log(`Projects created: ${projects.map(p => p.key).join(', ')}`);
-      console.log(`Issues created: ${createdIssues.map(i => i.key).join(', ')}`);
+      console.log(`Projects created: ${projects.map((p) => p.key).join(', ')}`);
+      console.log(`Issues created: ${createdIssues.map((i) => i.key).join(', ')}`);
       console.log('=========================\n');
 
       return;
@@ -198,7 +211,7 @@ export class JiraSeeder {
 }
 
 // Script execution
-async function main() {
+async function main(): Promise<void> {
   const config: JiraSeedConfig = {
     baseUrl: process.env.JIRA_BASE_URL || 'http://localhost:8080',
     email: process.env.JIRA_USER_EMAIL || 'admin@example.com',
@@ -211,15 +224,11 @@ async function main() {
 
 // Only run if called directly
 if (require.main === module) {
-  main()
-    .then(() => {
-      console.log('Seeding completed successfully');
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error('Seeding failed:', error);
-      process.exit(1);
-    });
+  // eslint-disable-next-line no-void
+  void main().catch((error) => {
+    console.error('Seeding failed:', error);
+    throw error;
+  });
 }
 
 export default JiraSeeder;

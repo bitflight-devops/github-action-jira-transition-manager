@@ -192,17 +192,18 @@ describe('jira e2e - real instance', () => {
     await action.execute();
 
     expect(setOutputSpy).toHaveBeenCalledWith('issueOutputs', expect.any(String));
-    const outputCall = setOutputSpy.mock.calls.find(call => call[0] === 'issueOutputs');
-    if (outputCall) {
-      const issueOutputs = JSON.parse(outputCall[1] as string);
-      expect(Array.isArray(issueOutputs)).toBe(true);
-      if (issueOutputs.length > 0) {
-        const firstIssue = issueOutputs[0];
-        expect(firstIssue).toHaveProperty('issue');
-        expect(firstIssue).toHaveProperty('names');
-        expect(firstIssue).toHaveProperty('ids');
-        expect(firstIssue).toHaveProperty('status');
-      }
+    const outputCall = setOutputSpy.mock.calls.find((call) => call[0] === 'issueOutputs');
+    expect(outputCall).toBeDefined();
+    if (!outputCall) {
+      return;
     }
+    const issueOutputs = JSON.parse(outputCall[1] as string);
+    expect(Array.isArray(issueOutputs)).toBe(true);
+    expect(issueOutputs.length).toBeGreaterThan(0);
+    const firstIssue = issueOutputs[0];
+    expect(firstIssue).toHaveProperty('issue');
+    expect(firstIssue).toHaveProperty('names');
+    expect(firstIssue).toHaveProperty('ids');
+    expect(firstIssue).toHaveProperty('status');
   });
 });
