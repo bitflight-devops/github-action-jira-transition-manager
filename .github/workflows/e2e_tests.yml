@@ -49,11 +49,12 @@ jobs:
           interval=10
 
           while [ $elapsed -lt $timeout ]; do
-            if docker compose ps | grep -q "healthy"; then
+            health_status=$(docker inspect --format='{{.State.Health.Status}}' jira-e2e 2>/dev/null || echo "unknown")
+            if [ "$health_status" = "healthy" ]; then
               echo "Jira container is healthy!"
               break
             fi
-            echo "Waiting... ($elapsed seconds elapsed)"
+            echo "Waiting... ($elapsed seconds elapsed, status: $health_status)"
             sleep $interval
             elapsed=$((elapsed + interval))
           done
@@ -81,7 +82,7 @@ jobs:
       - name: Seed Jira with test data
         run: |
           echo "Seeding Jira with test data..."
-          npx ts-node __tests__/fixtures/seed-jira.ts
+          node --loader ts-node/esm --no-warnings __tests__/fixtures/seed-jira.ts
         env:
           JIRA_BASE_URL: ${{ env.JIRA_BASE_URL }}
           JIRA_USER_EMAIL: ${{ env.JIRA_USER_EMAIL }}

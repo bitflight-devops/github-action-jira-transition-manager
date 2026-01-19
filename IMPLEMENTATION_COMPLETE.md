@@ -9,9 +9,9 @@ This PR successfully implements comprehensive end-to-end (e2e) testing infrastru
 #### New Files Created:
 
 1. **docker-compose.yml** - Jira Software 9.12.0 container configuration
-2. \***\*tests**/e2e.test.ts\*\* - Comprehensive e2e test suite
-3. \***\*tests**/fixtures/seed-jira.ts\*\* - Automated Jira data seeding script
-4. **. github/workflows/e2e_tests.yml** - GitHub Actions workflow for e2e testing
+2. **\_\_tests\_\_/e2e.test.ts** - Comprehensive e2e test suite
+3. **\_\_tests\_\_/fixtures/seed-jira.ts** - Automated Jira data seeding script
+4. **.github/workflows/e2e_tests.yml** - GitHub Actions workflow for e2e testing
 5. **DEVELOPMENT.md** - Developer guide for testing and building
 6. **E2E_TESTING_SUMMARY.md** - Detailed implementation documentation
 

@@ -75,6 +75,12 @@ export class JiraSeeder {
         console.log(`Project ${project.key} already exists, skipping...`);
         return null;
       }
+      console.error(
+        `Failed to create project ${project.key}:`,
+        error.message,
+        'status' in (error.response || {}) ? error.response.status : undefined,
+        'data' in (error.response || {}) ? error.response.data : undefined,
+      );
       throw error;
     }
   }

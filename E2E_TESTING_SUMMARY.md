@@ -8,14 +8,14 @@ This implementation adds comprehensive end-to-end (e2e) testing infrastructure f
 
 ### 1. Docker Infrastructure
 
-- **docker-compose.yml**: Configured Atlassian Jira Software 9.4.0 container
+- **docker-compose.yml**: Configured Atlassian Jira Software 9.12.0 container
   - Health checks for ensuring Jira is ready
   - Volume management for data persistence
   - Proper port mappings (8080:8080)
 
 ### 2. Test Data Seeding
 
-- \***\*tests**/fixtures/seed-jira.ts\*\*: TypeScript seeding script that:
+- **\_\_tests\_\_/fixtures/seed-jira.ts**: TypeScript seeding script that:
   - Waits for Jira to be ready with retry logic
   - Creates test projects (DVPS, UNICORN)
   - Populates issues with various types (Task, Bug, Story)
@@ -24,7 +24,7 @@ This implementation adds comprehensive end-to-end (e2e) testing infrastructure f
 
 ### 3. E2E Test Suite
 
-- \***\*tests**/e2e.test.ts\*\*: Comprehensive test suite covering:
+- **\_\_tests\_\_/e2e.test.ts**: Comprehensive test suite covering:
   - Connection to real Jira instance
   - Multiple GitHub event types (push, create, pull_request, etc.)
   - Issue transition validation
@@ -88,7 +88,7 @@ The workflow includes appropriate wait times and health checks.
 
 ### Jira Version
 
-Using Jira Software 9.4.0 as it's a stable version compatible with the jira.js library used in the action.
+Using Jira Software 9.12.0 as it's a stable version compatible with the jira.js library used in the action.
 
 ### Authentication
 

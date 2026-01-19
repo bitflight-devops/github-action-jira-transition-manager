@@ -68,7 +68,13 @@ projects:
 // Inputs for mock @actions/core
 let inputs = {} as any;
 // Shallow clone original @actions/github context
-const originalContext = { ...github.context };
+const originalContext = {
+  ref: github.context.ref,
+  sha: github.context.sha,
+  eventName: github.context.eventName,
+  action: github.context.action,
+  payload: { ...github.context.payload },
+};
 
 describe('jira e2e - real instance', () => {
   beforeAll(() => {
@@ -110,18 +116,27 @@ describe('jira e2e - real instance', () => {
     inputs.jira_base_url = baseUrl;
     inputs.jira_user_email = userEmail;
     inputs.jira_api_token = apiToken;
+
+    // Reset github context to original state before each test
+    github.context.eventName = originalContext.eventName;
+    github.context.action = originalContext.action;
+    github.context.payload = { ...originalContext.payload };
   });
 
   afterAll(() => {
     // Restore GitHub workspace
-    process.env.GITHUB_WORKSPACE = undefined;
-    if (originalGitHubWorkspace) {
+    if (originalGitHubWorkspace !== undefined) {
       process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    } else {
+      delete process.env.GITHUB_WORKSPACE;
     }
 
     // Restore @actions/github context
     github.context.ref = originalContext.ref;
     github.context.sha = originalContext.sha;
+    github.context.eventName = originalContext.eventName;
+    github.context.action = originalContext.action;
+    github.context.payload = { ...originalContext.payload };
 
     // Restore
     jest.restoreAllMocks();
@@ -188,11 +203,8 @@ describe('jira e2e - real instance', () => {
     await action.execute();
 
     expect(setOutputSpy).toHaveBeenCalledWith('issueOutputs', expect.any(String));
-    const outputCall = setOutputSpy.mock.calls.find((call) => call[0] === 'issueOutputs');
+    const outputCall = setOutputSpy.mock.calls.find((call) => call[0] === 'issueOutputs')!;
     expect(outputCall).toBeDefined();
-    if (!outputCall) {
-      return;
-    }
     const issueOutputs = JSON.parse(outputCall[1] as string);
     expect(Array.isArray(issueOutputs)).toBe(true);
     expect(issueOutputs.length).toBeGreaterThan(0);
