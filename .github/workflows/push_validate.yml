@@ -16,4 +16,5 @@ jobs:
       - name: List Issue Transitions
         uses: ./
         with:
-          issue: ${{ secrets.JIRA_TEST_ISSUE_KEY }}
+          issues: ${{ secrets.JIRA_TEST_ISSUE_KEY }}
+          fail_on_error: false
