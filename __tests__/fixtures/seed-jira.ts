@@ -78,6 +78,7 @@ export class JiraSeeder {
       console.error(
         `Failed to create project ${project.key}:`,
         error.message,
+        error.stack,
         'status' in (error.response || {}) ? error.response.status : undefined,
         'data' in (error.response || {}) ? error.response.data : undefined,
       );
