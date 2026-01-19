@@ -25,9 +25,14 @@ async function waitForJira(): Promise<void> {
   while (Date.now() - startTime < timeout) {
     try {
       // First check if HTTP is up
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       const response = await fetch(`${config.jira.baseUrl}/status`, {
-        signal: AbortSignal.timeout(5000),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`HTTP status: ${response.status}`);
@@ -56,9 +61,6 @@ async function waitForJira(): Promise<void> {
   console.error('✗ Timeout waiting for Jira to be ready');
   if (lastError) {
     console.error('Last error:', lastError.message);
-    if ('cause' in lastError && lastError.cause) {
-      console.error('Cause:', lastError.cause);
-    }
   }
   process.exit(1);
 }
