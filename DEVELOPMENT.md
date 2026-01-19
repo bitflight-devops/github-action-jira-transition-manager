@@ -51,7 +51,7 @@ docker compose logs -f jira
 export JIRA_BASE_URL=http://localhost:8080
 export JIRA_USER_EMAIL=admin@example.com
 export JIRA_API_TOKEN=admin
-npx ts-node __tests__/fixtures/seed-jira.ts
+npx tsx __tests__/fixtures/seed-jira.ts
 ```
 
 4. Run the e2e tests:

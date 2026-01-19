@@ -82,7 +82,7 @@ jobs:
       - name: Seed Jira with test data
         run: |
           echo "Seeding Jira with test data..."
-          node --loader ts-node/esm --no-warnings __tests__/fixtures/seed-jira.ts
+          npx tsx __tests__/fixtures/seed-jira.ts
         env:
           JIRA_BASE_URL: ${{ env.JIRA_BASE_URL }}
           JIRA_USER_EMAIL: ${{ env.JIRA_USER_EMAIL }}
