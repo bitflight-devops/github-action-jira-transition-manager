@@ -206,6 +206,7 @@ describe('jira e2e - real instance', () => {
     const outputCall = setOutputSpy.mock.calls.find((call) => call[0] === 'issueOutputs');
     expect(outputCall).toBeDefined();
     // Type guard: outputCall is defined after the assertion passes
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const issueOutputs = JSON.parse(outputCall![1] as string);
     expect(Array.isArray(issueOutputs)).toBe(true);
     expect(issueOutputs.length).toBeGreaterThan(0);
