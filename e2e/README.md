@@ -79,14 +79,15 @@ yarn e2e:logs
 ```
 e2e/
 ├── docker/
-│   └── docker-compose.yml    # Docker Compose configuration
+│   └── docker-compose.yml        # Docker Compose configuration
 ├── scripts/
-│   ├── e2e-config.ts         # Central E2E configuration
-│   ├── jira-client.ts        # Jira REST API client for tests
-│   ├── wait-for-jira.ts      # Readiness check script
-│   └── seed-jira.ts          # Test data seeding script
+│   ├── e2e-config.ts             # Central E2E configuration
+│   ├── jira-client.ts            # Jira REST API client for tests
+│   ├── wait-for-jira.ts          # Readiness check script
+│   └── seed-jira.ts              # Test data seeding script
 └── tests/
-    └── fixversion.e2e.test.ts # FixVersion E2E tests
+    ├── fixversion.e2e.test.ts    # FixVersion CRUD E2E tests
+    └── transitions.e2e.test.ts   # Action integration E2E tests
 ```
 
 ## Configuration
@@ -119,7 +120,16 @@ The test harness will automatically detect Cloud auth and use email + API token.
 
 The E2E tests cover:
 
-### FixVersion Management
+### Action Integration Tests (`transitions.e2e.test.ts`)
+
+- ✅ Issue creation and retrieval
+- ✅ JQL search functionality
+- ✅ Action construction with valid config
+- ✅ Graceful handling of non-existent issues
+- ✅ Jira client methods (getServerInfo, getMyself, etc.)
+- ✅ Issue field updates
+
+### FixVersion Management Tests (`fixversion.e2e.test.ts`)
 
 - ✅ Project and version setup
 - ✅ Creating new versions (patch, minor, major)
