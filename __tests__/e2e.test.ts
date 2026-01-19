@@ -72,6 +72,9 @@ const originalContext = { ...github.context };
 
 describe('jira e2e - real instance', () => {
   beforeAll(() => {
+    // Set timeout for all tests in this suite
+    jest.setTimeout(60_000);
+
     // Mock getInput
     jest.spyOn(core, 'getInput').mockImplementation((name: string) => {
       return inputs[name];
@@ -125,7 +128,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should connect to real Jira instance and get transitions', async () => {
-    jest.setTimeout(60_000);
     github.context.eventName = 'push';
     const settings: Args = inputHelper.getInputs();
     const action = new Action(github.context, settings);
@@ -134,7 +136,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should handle create event and transition issues', async () => {
-    jest.setTimeout(60_000);
     github.context.eventName = 'create';
     const settings: Args = inputHelper.getInputs();
     const action = new Action(github.context, settings);
@@ -143,7 +144,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should handle pull_request opened event', async () => {
-    jest.setTimeout(60_000);
     github.context.eventName = 'pull_request';
     github.context.action = 'opened';
     const settings: Args = inputHelper.getInputs();
@@ -153,7 +153,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should handle pull_request synchronized event', async () => {
-    jest.setTimeout(60_000);
     github.context.eventName = 'pull_request';
     github.context.action = 'synchronized';
     const settings: Args = inputHelper.getInputs();
@@ -163,7 +162,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should handle pull_request closed (merged) event', async () => {
-    jest.setTimeout(60_000);
     github.context.eventName = 'pull_request';
     github.context.action = 'closed';
     github.context.payload.merged = true;
@@ -174,7 +172,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should handle pull_request_review approved event', async () => {
-    jest.setTimeout(60_000);
     github.context.eventName = 'pull_request_review';
     github.context.payload.state = 'APPROVED';
     const settings: Args = inputHelper.getInputs();
@@ -184,7 +181,6 @@ describe('jira e2e - real instance', () => {
   });
 
   it('should validate issue outputs contain expected fields', async () => {
-    jest.setTimeout(60_000);
     const setOutputSpy = jest.spyOn(core, 'setOutput');
     github.context.eventName = 'push';
     const settings: Args = inputHelper.getInputs();

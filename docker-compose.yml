@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   jira:
-    image: atlassian/jira-software:9.4.0
+    image: atlassian/jira-software:9.12.0
     container_name: jira-e2e
     ports:
       - '8080:8080'

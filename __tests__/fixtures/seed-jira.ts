@@ -201,8 +201,6 @@ export class JiraSeeder {
       console.log(`Projects created: ${projects.map((p) => p.key).join(', ')}`);
       console.log(`Issues created: ${createdIssues.map((i) => i.key).join(', ')}`);
       console.log('=========================\n');
-
-      return;
     } catch (error: any) {
       console.error('Failed to seed test data:', error.message);
       throw error;
