@@ -79,7 +79,7 @@ The implementation follows best practices:
 
 The infrastructure is ready for:
 
-1. Running e2e tests locally with `docker-compose up` + test commands
+1. Running e2e tests locally with `docker compose up` + test commands
 2. Automated e2e testing in CI/CD via the workflow
 3. Extension with additional test scenarios as needed
 4. Customization for specific workflow requirements

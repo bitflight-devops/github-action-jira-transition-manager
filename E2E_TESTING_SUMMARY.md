@@ -173,10 +173,10 @@ The existing tests in `__tests__/index.test.ts` require actual Jira credentials 
 
 ```bash
 # Start Jira container
-docker-compose up -d
+docker compose up -d
 
 # Wait for Jira to be ready (check logs)
-docker-compose logs -f jira
+docker compose logs -f jira
 
 # Seed test data
 export JIRA_BASE_URL=http://localhost:8080
@@ -188,7 +188,7 @@ npx ts-node __tests__/fixtures/seed-jira.ts
 yarn test __tests__/e2e.test.ts
 
 # Cleanup
-docker-compose down -v
+docker compose down -v
 ```
 
 ### In CI/CD

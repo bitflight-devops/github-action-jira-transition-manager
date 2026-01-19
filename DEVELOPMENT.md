@@ -32,17 +32,17 @@ The e2e tests run against a real Jira instance in a Docker container to validate
 1. Start the Jira container:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 2. Wait for Jira to be ready (this can take 2-3 minutes):
 
 ```bash
 # Check container health
-docker-compose ps
+docker compose ps
 
 # Check logs
-docker-compose logs -f jira
+docker compose logs -f jira
 ```
 
 3. Seed the Jira instance with test data:
@@ -64,7 +64,7 @@ yarn test __tests__/e2e.test.ts
 5. Stop the Jira container when done:
 
 ```bash
-docker-compose down -v
+docker compose down -v
 ```
 
 #### E2E Test Architecture

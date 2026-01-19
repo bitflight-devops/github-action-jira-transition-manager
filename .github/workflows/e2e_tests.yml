@@ -30,7 +30,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6.2.0
         with:
-          node-version: '16.18.0'
+          node-version: '20'
           cache: 'yarn'
 
       - name: Install dependencies
@@ -38,7 +38,7 @@ jobs:
 
       - name: Start Jira container
         run: |
-          docker-compose up -d
+          docker compose up -d
           echo "Waiting for Jira to start..."
 
       - name: Wait for Jira to be healthy
@@ -49,7 +49,7 @@ jobs:
           interval=10
 
           while [ $elapsed -lt $timeout ]; do
-            if docker-compose ps | grep -q "healthy"; then
+            if docker compose ps | grep -q "healthy"; then
               echo "Jira container is healthy!"
               break
             fi
@@ -60,7 +60,7 @@ jobs:
 
           if [ $elapsed -ge $timeout ]; then
             echo "Timeout waiting for Jira to be healthy"
-            docker-compose logs jira
+            docker compose logs jira
             exit 1
           fi
 
@@ -73,7 +73,7 @@ jobs:
         run: |
           echo "Checking Jira availability..."
           curl -v http://localhost:8080/status || true
-          docker-compose logs jira | tail -50
+          docker compose logs jira | tail -50
 
       - name: Build TypeScript
         run: yarn run build
@@ -100,8 +100,8 @@ jobs:
         if: failure()
         run: |
           echo "Jira container logs:"
-          docker-compose logs jira
+          docker compose logs jira
 
       - name: Stop Jira container
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
