@@ -17,7 +17,7 @@ describe('FixVersion E2E Tests', () => {
     // Verify Jira is ready
     const serverInfo = await client.getServerInfo();
     console.log(`Connected to Jira ${serverInfo.version}`);
-  }, config?.timeouts?.jiraReady || 60000);
+  }, 300000); // 5 minutes timeout for Jira readiness
 
   describe('Project and Version Setup', () => {
     it(

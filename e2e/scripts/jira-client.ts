@@ -109,14 +109,19 @@ export class JiraE2EClient {
       return await this.request<JiraProject>(`/rest/api/2/project/${key}`);
     } catch {
       // Project doesn't exist, create it
+      // Ensure we have a valid lead
+      const lead = this.config.jira.auth.username || this.config.jira.auth.email || 'admin';
+
       return this.request<JiraProject>('/rest/api/2/project', {
         method: 'POST',
         body: JSON.stringify({
           key,
           name,
           projectTypeKey: 'software',
-          lead: this.config.jira.auth.username || this.config.jira.auth.email,
-          projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-simplified-scrum',
+          lead,
+          // Use simplified template that's widely available
+          // Note: Requires Jira Software, not available in Jira Core
+          projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-simplified-basic-software-development-template',
         }),
       });
     }

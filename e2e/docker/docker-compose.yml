@@ -38,8 +38,8 @@ services:
       ATL_DB_TYPE: postgres72
       JVM_MINIMUM_MEMORY: 2048m
       JVM_MAXIMUM_MEMORY: 4096m
-      # Skip setup wizard - these settings will be configured via bootstrap
-      JIRA_SETUP_SKIP: 'true'
+      # Note: Jira DC requires manual setup wizard completion on first run
+      # The wait-for-jira script will poll until Jira is accessible
     ports:
       - '8080:8080'
     volumes:
