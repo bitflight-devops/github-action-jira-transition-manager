@@ -203,8 +203,11 @@ describe('jira e2e - real instance', () => {
     await action.execute();
 
     expect(setOutputSpy).toHaveBeenCalledWith('issueOutputs', expect.any(String));
-    const outputCall = setOutputSpy.mock.calls.find((call) => call[0] === 'issueOutputs')!;
+    const outputCall = setOutputSpy.mock.calls.find((call) => call[0] === 'issueOutputs');
     expect(outputCall).toBeDefined();
+    if (!outputCall) {
+      throw new Error('outputCall should be defined');
+    }
     const issueOutputs = JSON.parse(outputCall[1] as string);
     expect(Array.isArray(issueOutputs)).toBe(true);
     expect(issueOutputs.length).toBeGreaterThan(0);
