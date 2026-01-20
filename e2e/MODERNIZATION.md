@@ -6,11 +6,11 @@ This document tracks the updates made to bring the E2E test harness to 2026 stan
 
 ### Actions Version Updates
 
-All GitHub Actions have been updated to their latest stable versions as of 2026:
+All GitHub Actions have been updated to their latest stable versions as of January 2026 (verified via GitHub API):
 
-- **actions/checkout**: `v3` → `v4.2.2` (latest stable)
-- **actions/setup-node**: `v4` → `v4.1.0` (latest stable)
-- **actions/upload-artifact**: `v4` → `v4.5.0` (latest stable with improved performance)
+- **actions/checkout**: `v3` → `v6.0.1` (latest stable, released December 2025)
+- **actions/setup-node**: `v4` → `v6.2.0` (latest stable, released January 2026)
+- **actions/upload-artifact**: `v4` → `v6.0.0` (latest stable, Node.js 24 support, released December 2025)
 
 ### Node.js Version
 
@@ -30,10 +30,10 @@ All GitHub Actions have been updated to their latest stable versions as of 2026:
 - **Removed deprecated `version:` field**: Docker Compose V2 no longer requires or uses the version field
 - The compose file now uses the modern format that's been standard since Docker Compose V2 (2021+)
 
-### Image Updates
+### Image Updates (verified via Docker Hub API)
 
-- **PostgreSQL**: `14.10-alpine` → `17.2-alpine` (current stable, improved performance and security)
-- **Jira Software**: `9.12.0` → `10.4.0` (latest stable Data Center version)
+- **PostgreSQL**: `14.10-alpine` → `18.1-alpine` (latest stable as of January 2026)
+- **Jira Software**: `9.12.0` → `10.5.0` (latest stable Data Center version as of January 2026)
 
 ### Docker Compose V2
 
@@ -50,16 +50,16 @@ Our npm scripts already use the modern `docker compose` syntax.
 
 ### Why These Versions?
 
-**PostgreSQL 17.2**:
+**PostgreSQL 18.1**:
 
-- Latest stable release with improved query performance
+- Latest stable release (January 2026) with improved query performance
 - Better JSON support for modern application patterns
-- Enhanced security features
+- Enhanced security features and performance improvements
 - Full compatibility with Jira 10.x
 
-**Jira Software 10.4.0**:
+**Jira Software 10.5.0**:
 
-- Latest Data Center version (2026)
+- Latest Data Center version (January 2026)
 - Improved REST API performance
 - Better compatibility with modern authentication methods
 - Enhanced project and version management features
@@ -100,17 +100,30 @@ While these updates should work seamlessly, verify:
 
 ## Migration Path
 
-If you encounter issues:
+### For Local Development
 
-1. **Docker Compose format**: If you're on an older Docker version, install Docker Desktop 4.0+ or Docker CLI with Compose V2
-2. **PostgreSQL**: If compatibility issues arise, can roll back to `16.x-alpine`
-3. **Jira**: If Jira 10.4.0 has issues, can use `10.0.0` or `9.17.0`
-4. **Node.js**: If Node 22 causes issues, can fall back to `20` (LTS until 2026)
+If you encounter issues running the E2E tests locally:
+
+1. **Docker Compose format**: Ensure Docker Desktop 4.0+ or Docker CLI with Compose V2 is installed
+2. **PostgreSQL**: If compatibility issues arise, can roll back to `17.x-alpine` or `16.x-alpine`
+3. **Jira**: If Jira 10.5.0 has issues, can use `10.4.0`, `10.0.0` or `9.17.0`
+4. **Node.js**: If Node 22 causes issues, can fall back to `20` (LTS until April 2026)
+
+### For CI (GitHub Actions)
+
+GitHub-hosted runners automatically provide:
+
+- Latest Docker with Compose V2
+- Configurable Node.js versions via actions/setup-node
+- No manual Docker installation required
 
 ## References
 
 - [Docker Compose V2 Migration](https://docs.docker.com/compose/compose-v2/)
-- [PostgreSQL 17 Release Notes](https://www.postgresql.org/docs/17/release-17.html)
+- [PostgreSQL 18 Release Notes](https://www.postgresql.org/docs/18/release-18.html)
 - [Atlassian Jira Data Center Releases](https://confluence.atlassian.com/jiracore/jira-core-release-notes.html)
 - [Node.js Release Schedule](https://nodejs.org/en/about/releases/)
+- [GitHub Actions - actions/checkout](https://github.com/actions/checkout/releases)
+- [GitHub Actions - actions/setup-node](https://github.com/actions/setup-node/releases)
+- [GitHub Actions - actions/upload-artifact](https://github.com/actions/upload-artifact/releases)
 - [GitHub Actions Changelog](https://github.blog/changelog/)
