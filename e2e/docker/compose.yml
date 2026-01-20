@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: jira-e2e-postgres
+    environment:
+      POSTGRES_DB: jiradb
+      POSTGRES_USER: jirauser
+      POSTGRES_PASSWORD: jirapass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U jirauser -d jiradb']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jira-network
+
+  jira:
+    image: atlassian/jira-software:10.5.0
+    container_name: jira-e2e
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ATL_PROXY_NAME: localhost
+      ATL_PROXY_PORT: 8080
+      ATL_TOMCAT_SCHEME: http
+      ATL_TOMCAT_SECURE: 'false'
+      ATL_JDBC_URL: jdbc:postgresql://postgres:5432/jiradb
+      ATL_JDBC_USER: jirauser
+      ATL_JDBC_PASSWORD: jirapass
+      ATL_DB_DRIVER: org.postgresql.Driver
+      ATL_DB_TYPE: postgres72
+      JVM_MINIMUM_MEMORY: 2048m
+      JVM_MAXIMUM_MEMORY: 4096m
+      # Note: Jira DC requires manual setup wizard completion on first run
+      # The wait-for-jira script will poll until Jira is accessible
+    ports:
+      - '8080:8080'
+    volumes:
+      - jira-data:/var/atlassian/application-data/jira
+    networks:
+      - jira-network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/status']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+volumes:
+  postgres-data:
+  jira-data:
+
+networks:
+  jira-network:
+    driver: bridge

@@ -7,6 +7,7 @@ const config: Config.InitialOptions = {
   moduleFileExtensions: ['js', 'ts'],
   testEnvironment: 'node',
   testMatch: ['**/__tests__/*.test.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/e2e/'],
   testRunner: 'jest-circus/runner',
   transform: {
     '^.+\\.ts$': 'ts-jest',

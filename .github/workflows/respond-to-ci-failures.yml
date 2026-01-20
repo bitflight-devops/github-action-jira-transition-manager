@@ -1,0 +1,279 @@
+name: Respond to CI Failures
+
+on:
+  check_suite:
+    types: [completed]
+
+permissions:
+  checks: read
+  pull-requests: write
+  contents: read
+
+jobs:
+  respond-to-failure:
+    name: Post CI Failure Comment
+    runs-on: ubuntu-latest
+    if: github.event.check_suite.conclusion == 'failure'
+
+    steps:
+      - name: Find associated PR
+        id: find-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${context.payload.check_suite.head_branch}`
+            });
+
+            if (prs.length === 0) {
+              core.info('No open PR found for this check suite');
+              return null;
+            }
+
+            const pr = prs[0];
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_author', pr.user.login);
+            return pr.number;
+
+      - name: Verify PR is from Copilot
+        id: verify-author
+        if: steps.find-pr.outputs.pr_number
+        run: |
+          author="${{ steps.find-pr.outputs.pr_author }}"
+          echo "PR Author: $author"
+
+          # Check if author is copilot, github-actions bot, or contains copilot in the name
+          if [[ "$author" == "copilot"* ]] || [[ "$author" == *"github-actions"* ]] || [[ "$author" == *"copilot"* ]]; then
+            echo "is_copilot=true" >> $GITHUB_OUTPUT
+            echo "✓ PR is from Copilot or GitHub Actions bot"
+          else
+            echo "is_copilot=false" >> $GITHUB_OUTPUT
+            echo "✗ PR is not from Copilot (author: $author)"
+          fi
+
+      - name: Get failed check runs
+        id: get-failures
+        if: steps.verify-author.outputs.is_copilot == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const checkSuiteId = context.payload.check_suite.id;
+
+            // Get all check runs for this suite
+            const { data: checkRuns } = await github.rest.checks.listForSuite({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_suite_id: checkSuiteId,
+              per_page: 100
+            });
+
+            // Filter failed check runs
+            const failedRuns = checkRuns.check_runs.filter(
+              run => run.conclusion === 'failure'
+            );
+
+            if (failedRuns.length === 0) {
+              core.info('No failed check runs found');
+              return [];
+            }
+
+            core.info(`Found ${failedRuns.length} failed check run(s)`);
+
+            // Collect failure details
+            const failures = [];
+            for (const run of failedRuns) {
+              const failure = {
+                name: run.name,
+                conclusion: run.conclusion,
+                html_url: run.html_url,
+                details_url: run.details_url,
+                started_at: run.started_at,
+                completed_at: run.completed_at
+              };
+              
+              // Try to get job logs if this is a GitHub Actions run
+              if (run.details_url && run.details_url.includes('/actions/runs/')) {
+                try {
+                  const runId = run.details_url.match(/\/actions\/runs\/(\d+)/)[1];
+                  
+                  // Get jobs for this run
+                  const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: runId,
+                    per_page: 100
+                  });
+                  
+                  // Find failed jobs
+                  const failedJobs = jobs.jobs.filter(job => job.conclusion === 'failure');
+                  
+                  if (failedJobs.length > 0) {
+                    failure.jobs = [];
+                    
+                    for (const job of failedJobs) {
+                      const jobInfo = {
+                        name: job.name,
+                        html_url: job.html_url,
+                        steps: []
+                      };
+                      
+                      // Find failed steps
+                      const failedSteps = job.steps.filter(step => step.conclusion === 'failure');
+                      for (const step of failedSteps) {
+                        jobInfo.steps.push({
+                          name: step.name,
+                          conclusion: step.conclusion,
+                          number: step.number
+                        });
+                      }
+                      
+                      // Try to get logs
+                      try {
+                        const { data: logs } = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          job_id: job.id
+                        });
+                        
+                        // Extract last 30 lines
+                        const logLines = logs.split('\n');
+                        const last30Lines = logLines.slice(-30).join('\n');
+                        jobInfo.logs = last30Lines;
+                      } catch (logError) {
+                        core.warning(`Could not fetch logs for job ${job.id}: ${logError.message}`);
+                        jobInfo.logs = 'Logs unavailable';
+                      }
+                      
+                      failure.jobs.push(jobInfo);
+                    }
+                  }
+                } catch (error) {
+                  core.warning(`Error processing check run ${run.name}: ${error.message}`);
+                }
+              }
+              
+              failures.push(failure);
+            }
+
+            core.setOutput('failures', JSON.stringify(failures));
+            return failures;
+
+      - name: Check for existing comment
+        id: check-comment
+        if: steps.verify-author.outputs.is_copilot == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ steps.find-pr.outputs.pr_number }};
+            const checkSuiteId = context.payload.check_suite.id;
+
+            // Get existing comments
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100
+            });
+
+            // Look for existing failure comment for this check suite
+            const existingComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body.includes(`<!-- check-suite-failure-${checkSuiteId} -->`)
+            );
+
+            if (existingComment) {
+              core.info(`Found existing comment: ${existingComment.id}`);
+              core.setOutput('comment_id', existingComment.id);
+              return existingComment.id;
+            }
+
+            core.info('No existing comment found');
+            return null;
+
+      - name: Post or update failure comment
+        if: steps.verify-author.outputs.is_copilot == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ steps.find-pr.outputs.pr_number }};
+            const checkSuiteId = context.payload.check_suite.id;
+            const failures = JSON.parse('${{ steps.get-failures.outputs.failures }}');
+            const existingCommentId = '${{ steps.check-comment.outputs.comment_id }}';
+
+            if (failures.length === 0) {
+              core.info('No failures to report');
+              return;
+            }
+
+            // Build comment body
+            let body = `<!-- check-suite-failure-${checkSuiteId} -->\n\n`;
+            body += `## 🚨 CI Failure Detected\n\n`;
+            body += `The following check(s) failed in this PR:\n\n`;
+
+            for (const failure of failures) {
+              body += `### ❌ ${failure.name}\n\n`;
+              body += `- **Status**: ${failure.conclusion}\n`;
+              body += `- **Details**: [View Run](${failure.html_url})\n`;
+              
+              if (failure.started_at && failure.completed_at) {
+                const start = new Date(failure.started_at);
+                const end = new Date(failure.completed_at);
+                const duration = Math.round((end - start) / 1000);
+                body += `- **Duration**: ${duration}s\n`;
+              }
+              
+              if (failure.jobs && failure.jobs.length > 0) {
+                body += `\n#### Failed Jobs\n\n`;
+                
+                for (const job of failure.jobs) {
+                  body += `**${job.name}** ([logs](${job.html_url}))\n\n`;
+                  
+                  if (job.steps.length > 0) {
+                    body += `Failed steps:\n`;
+                    for (const step of job.steps) {
+                      body += `- Step ${step.number}: ${step.name}\n`;
+                    }
+                    body += `\n`;
+                  }
+                  
+                  if (job.logs && job.logs !== 'Logs unavailable') {
+                    body += `<details>\n<summary>Last 30 lines of logs</summary>\n\n`;
+                    body += `\`\`\`\n${job.logs}\n\`\`\`\n\n`;
+                    body += `</details>\n\n`;
+                  } else {
+                    body += `_Logs unavailable. Please check the [job details](${job.html_url})._\n\n`;
+                  }
+                }
+              }
+              
+              body += `\n`;
+            }
+
+            body += `---\n\n`;
+            body += `### 🔍 Next Steps\n\n`;
+            body += `1. Review the error logs above\n`;
+            body += `2. Check the [full workflow run](${context.payload.check_suite.html_url}) for complete details\n`;
+            body += `3. If artifacts were uploaded, download them for more information\n`;
+            body += `4. Fix the issues and push a new commit to re-run the checks\n`;
+
+            // Post or update comment
+            if (existingCommentId && existingCommentId !== 'null') {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingCommentId,
+                body: body
+              });
+              core.info(`Updated existing comment ${existingCommentId}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body
+              });
+              core.info('Posted new comment');
+            }

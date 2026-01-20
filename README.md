@@ -78,3 +78,57 @@ The `issueOutputs` JSON structure
   }
 ]
 ```
+
+## Development
+
+### Running Tests
+
+Run the standard unit tests:
+
+```bash
+yarn test
+```
+
+### E2E Testing
+
+This project includes comprehensive end-to-end tests using a dockerized Jira instance. See [e2e/README.md](e2e/README.md) for detailed instructions.
+
+Quick start for E2E tests:
+
+```bash
+# Start Jira stack
+yarn e2e:up
+
+# Wait for Jira to be ready (3-5 minutes)
+yarn e2e:wait
+
+# Seed test data
+yarn e2e:seed
+
+# Run E2E tests
+yarn e2e:test
+
+# Stop Jira stack
+yarn e2e:down
+```
+
+Or run everything at once:
+
+```bash
+yarn e2e:all
+```
+
+### Building
+
+Build the action:
+
+```bash
+yarn build
+```
+
+### Linting
+
+```bash
+yarn lint
+yarn format
+```

@@ -94,7 +94,7 @@
     // "allowUnreachableCode": true,                     /* Disable error reporting for unreachable code. */
     /* Completeness */
     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
-    // "skipLibCheck": true                                 /* Skip type checking all .d.ts files. */
+    "skipLibCheck": true /* Skip type checking all .d.ts files. */,
     "plugins": [
       {
         "name": "typescript-eslint-language-service"
@@ -117,10 +117,5 @@
     "jest.config.ts"
   ],
   "include": ["src"],
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "ts-node": {
-    // Tell ts-node CLI to install the --loader automatically, explained below
-    "esm": true,
-    "swc": true
-  }
+  "$schema": "https://json.schemastore.org/tsconfig"
 }
