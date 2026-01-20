@@ -117,11 +117,5 @@
     "jest.config.ts"
   ],
   "include": ["src"],
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "ts-node": {
-    // Do not use ESM mode for E2E scripts to avoid loader issues with Node 22
-    "compilerOptions": {
-      "module": "CommonJS"
-    }
-  }
+  "$schema": "https://json.schemastore.org/tsconfig"
 }
