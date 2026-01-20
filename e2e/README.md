@@ -15,8 +15,8 @@ This provides deterministic testing while being as Cloud-compatible as possible.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
-- Node.js 18+ and Yarn
+- Docker and Docker Compose V2 (integrated with Docker)
+- Node.js 22+ and Yarn
 - At least 6GB of RAM available for Docker (Jira is memory-intensive)
 
 ## Quick Start

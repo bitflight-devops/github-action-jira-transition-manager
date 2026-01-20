@@ -7,6 +7,7 @@ This document outlines the verification steps performed during development and r
 ### 1. Code Compilation and Type Checking
 
 **Verification Performed:**
+
 ```bash
 # TypeScript compilation check
 npx tsc --skipLibCheck --noEmit e2e/scripts/*.ts e2e/tests/*.ts
@@ -20,6 +21,7 @@ yarn build
 ### 2. Code Linting and Formatting
 
 **Verification Performed:**
+
 ```bash
 # Format all files
 yarn format
@@ -33,6 +35,7 @@ yarn lint
 ### 3. Code Review
 
 **Verification Performed:**
+
 - Automated code review using code review tool
 - Addressed 5 feedback items:
   - Removed non-standard JIRA_SETUP_SKIP env var
@@ -48,23 +51,27 @@ yarn lint
 Due to environment constraints, the following were NOT tested during implementation:
 
 ### ❌ Docker Stack Execution
+
 - Docker Compose up/down operations
 - Jira container startup and readiness
 - PostgreSQL container initialization
 - Network connectivity between containers
 
 ### ❌ Jira REST API Integration
+
 - Actual API calls to Jira instance
 - Authentication with admin credentials
 - Project/version/issue creation
 - JQL search functionality
 
 ### ❌ E2E Test Execution
+
 - Running the actual test suites
 - Test assertions against live Jira
 - Action integration with real Jira instance
 
 ### ❌ CI Workflow
+
 - GitHub Actions workflow execution
 - Artifact upload on failure
 - End-to-end CI pipeline
@@ -76,12 +83,14 @@ To properly verify the E2E test harness, follow these stages:
 ### Stage 1: Static Analysis (Done ✅)
 
 **What to verify:**
+
 - TypeScript compilation
 - Code linting
 - Code formatting
 - Automated code review
 
 **Commands:**
+
 ```bash
 yarn build
 yarn lint
@@ -93,12 +102,14 @@ yarn format
 ### Stage 2: Docker Stack Verification (TODO)
 
 **What to verify:**
+
 - Docker Compose starts successfully
 - PostgreSQL becomes healthy
 - Jira container starts and responds
 - Health checks pass
 
 **Commands:**
+
 ```bash
 # Start the stack
 yarn e2e:up
@@ -117,12 +128,14 @@ curl -I http://localhost:8080/status
 ```
 
 **Expected Result:**
+
 - Both containers running and healthy
 - No error messages in logs
 - PostgreSQL accepting connections
 - Jira responding to HTTP requests (may return 503 during setup)
 
 **Troubleshooting:**
+
 - If Jira fails to start: Check Docker has at least 6GB RAM allocated
 - If ports conflict: Ensure 8080 and 5432 are not in use
 - Check logs: `docker logs jira-e2e` and `docker logs jira-e2e-postgres`
@@ -130,24 +143,28 @@ curl -I http://localhost:8080/status
 ### Stage 3: Readiness Script Verification (TODO)
 
 **What to verify:**
+
 - wait-for-jira.ts can connect to Jira
 - Authentication works with admin/admin credentials
 - Polling logic handles Jira startup correctly
 - Timeout is sufficient (300 seconds = 5 minutes)
 
 **Commands:**
+
 ```bash
 # After starting Docker stack
 yarn e2e:wait
 ```
 
 **Expected Result:**
+
 - Script polls Jira every 5 seconds
 - Eventually gets HTTP 200 from /status
 - Successfully authenticates and gets server info
 - Completes with "✓ Jira is ready!" message
 
 **Troubleshooting:**
+
 - If timeout occurs: Jira may need more RAM or longer timeout
 - If auth fails: Check Jira setup wizard - may need manual completion
 - Monitor progress: Script prints status every 5 seconds
@@ -157,12 +174,14 @@ yarn e2e:wait
 ### Stage 4: Data Seeding Verification (TODO)
 
 **What to verify:**
+
 - seed-jira.ts can create project
 - Version creation works
 - Issue creation succeeds
 - Idempotency works (can re-run without errors)
 
 **Commands:**
+
 ```bash
 # After Jira is ready
 yarn e2e:seed
@@ -177,12 +196,14 @@ yarn e2e:seed
 ```
 
 **Expected Result:**
+
 - Script creates project "E2E" (or finds existing)
 - Creates version "1.0.0" (or finds existing)
 - Creates test issue (or finds existing)
 - Second run completes without errors
 
 **Troubleshooting:**
+
 - If project creation fails: May need to complete Jira setup wizard manually
 - If template not found: Project template may not be available in this Jira version
 - Check API responses: Add debug logging to jira-client.ts if needed
@@ -190,12 +211,14 @@ yarn e2e:seed
 ### Stage 5: E2E Test Execution (TODO)
 
 **What to verify:**
+
 - fixversion.e2e.test.ts runs successfully
 - transitions.e2e.test.ts runs successfully
 - All test assertions pass
 - Tests can connect to Jira and execute API calls
 
 **Commands:**
+
 ```bash
 # Run E2E tests
 yarn e2e:test
@@ -209,12 +232,14 @@ NODE_ENV=testing jest --verbose e2e/tests/fixversion.e2e.test.ts
 ```
 
 **Expected Result:**
+
 - All tests pass
 - No connection errors
 - API calls return expected data
 - Assertions validate Jira state correctly
 
 **Troubleshooting:**
+
 - If tests timeout: Increase test timeout in jest config
 - If auth fails: Verify admin/admin credentials work in browser
 - If API errors: Check Jira logs and API responses
@@ -223,11 +248,13 @@ NODE_ENV=testing jest --verbose e2e/tests/fixversion.e2e.test.ts
 ### Stage 6: Full Integration Test (TODO)
 
 **What to verify:**
+
 - Complete workflow from start to finish
 - Teardown works correctly
 - Can run multiple times
 
 **Commands:**
+
 ```bash
 # Full workflow
 yarn e2e:all
@@ -245,6 +272,7 @@ docker volume ls | grep jira
 ```
 
 **Expected Result:**
+
 - Complete workflow succeeds
 - Tests pass
 - Cleanup removes containers and volumes
@@ -253,12 +281,14 @@ docker volume ls | grep jira
 ### Stage 7: CI Workflow Verification (TODO)
 
 **What to verify:**
+
 - GitHub Actions workflow runs successfully
 - All steps complete without errors
 - Artifacts are uploaded on failure
 - Timeout settings are appropriate
 
 **How to verify:**
+
 1. Push branch to GitHub
 2. Observe workflow run in GitHub Actions UI
 3. Verify each step completes successfully
@@ -266,6 +296,7 @@ docker volume ls | grep jira
 5. Intentionally break a test to verify failure handling and artifact upload
 
 **Expected Result:**
+
 - Workflow completes in under 25 minutes
 - All steps succeed
 - On failure: Docker logs are uploaded as artifacts
@@ -276,6 +307,7 @@ docker volume ls | grep jira
 Use this checklist when manually testing the E2E harness:
 
 ### Prerequisites
+
 - [ ] Docker Desktop installed and running
 - [ ] Docker has at least 6GB RAM allocated
 - [ ] Ports 8080 and 5432 are available
@@ -283,6 +315,7 @@ Use this checklist when manually testing the E2E harness:
 - [ ] Yarn installed
 
 ### Testing Steps
+
 1. [ ] Clone repository
 2. [ ] Install dependencies: `yarn install`
 3. [ ] Build project: `yarn build` (should succeed)
@@ -296,6 +329,7 @@ Use this checklist when manually testing the E2E harness:
 11. [ ] Verify cleanup: `docker ps -a | grep jira` (should be empty)
 
 ### Browser Verification (Optional)
+
 1. [ ] Navigate to http://localhost:8080
 2. [ ] Login with admin/admin
 3. [ ] Verify project "E2E" exists
@@ -305,18 +339,22 @@ Use this checklist when manually testing the E2E harness:
 ## Known Limitations
 
 ### Environment Limitations
+
 - **No Docker Access**: Development environment didn't have Docker, so actual execution wasn't tested
 - **No Jira Instance**: Couldn't validate against real Jira REST APIs
 - **No CI Execution**: Couldn't verify GitHub Actions workflow end-to-end
 
 ### What This Means
+
 - Code is syntactically correct and type-safe ✅
 - Code follows best practices and passes review ✅
 - Logic is sound based on Jira REST API documentation ✅
 - Actual runtime behavior is untested ❌
 
 ### Mitigation
+
 To ensure the system works:
+
 1. Run manual testing checklist above
 2. Monitor first CI run closely
 3. Check Docker logs if any issues occur
@@ -326,6 +364,7 @@ To ensure the system works:
 ## Debugging Tips
 
 ### If Docker fails to start:
+
 ```bash
 docker compose -f e2e/docker/docker-compose.yml config  # Validate compose file
 docker system df  # Check available disk space
@@ -333,6 +372,7 @@ docker system prune  # Clean up unused resources
 ```
 
 ### If Jira won't start:
+
 ```bash
 docker logs jira-e2e --tail 100  # Check recent logs
 docker stats jira-e2e  # Check resource usage
@@ -340,6 +380,7 @@ docker exec jira-e2e ps aux  # Check running processes
 ```
 
 ### If tests fail:
+
 ```bash
 # Add debug logging to jira-client.ts
 console.log('Request:', url, options);
@@ -362,6 +403,7 @@ curl -u admin:admin http://localhost:8080/rest/api/2/serverInfo | jq
 ## Questions or Issues?
 
 If you encounter issues during verification:
+
 1. Check logs: `yarn e2e:logs`
 2. Review troubleshooting sections above
 3. Consult e2e/README.md for additional guidance
