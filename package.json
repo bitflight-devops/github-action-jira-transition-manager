@@ -44,7 +44,11 @@
     "e2e:seed": "node e2e/dist/scripts/seed-jira.js",
     "e2e:test": "NODE_ENV=testing jest --testMatch='**/e2e/**/*.e2e.test.ts'",
     "e2e:logs": "cd e2e/docker && docker compose logs",
-    "e2e:all": "yarn e2e:up && yarn e2e:setup && yarn e2e:wait && yarn e2e:seed && yarn e2e:test"
+    "e2e:all": "yarn e2e:up && yarn e2e:setup && yarn e2e:wait && yarn e2e:seed && yarn e2e:test",
+    "e2e:snapshot:save": "node e2e/dist/scripts/snapshot-save.js",
+    "e2e:snapshot:restore": "node e2e/dist/scripts/snapshot-restore.js",
+    "e2e:snapshot:check": "node e2e/dist/scripts/snapshot-check.js",
+    "e2e:fast": "yarn e2e:snapshot:check --quiet && yarn e2e:snapshot:restore --force && yarn e2e:up && yarn e2e:wait && yarn e2e:test || yarn e2e:all"
   },
   "config": {
     "commitizen": {

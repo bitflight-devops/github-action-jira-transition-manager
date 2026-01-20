@@ -82,6 +82,101 @@ To see Docker container logs:
 yarn e2e:logs
 ```
 
+## Snapshots (Fast Testing)
+
+Jira takes 3-5 minutes to start and configure on first run. Snapshots let you save a pre-configured Jira state and restore it in seconds.
+
+### Creating a Snapshot
+
+After Jira is set up and seeded:
+
+```bash
+# Run full setup first (only needed once)
+yarn e2e:all
+
+# Stop containers
+cd e2e/docker && docker compose stop && cd ../..
+
+# Save snapshot
+yarn e2e:snapshot:save
+```
+
+This creates `e2e/snapshots/` containing:
+
+- `jira-data-snapshot.tar.gz` - Jira application data
+- `postgres-data-snapshot.tar.gz` - Database data
+- `snapshot-metadata.json` - Version info and timestamps
+
+### Restoring from Snapshot
+
+```bash
+# Restore volumes from snapshot
+yarn e2e:snapshot:restore
+
+# Start containers and run tests
+yarn e2e:up && yarn e2e:wait && yarn e2e:test
+```
+
+### Fast Mode (Automatic)
+
+The `e2e:fast` command automatically uses snapshots when available:
+
+```bash
+yarn e2e:fast
+```
+
+This will:
+
+1. Check if snapshots exist
+2. If yes: restore and run tests (~30 seconds)
+3. If no: fall back to full setup (~5 minutes)
+
+### Snapshot Commands
+
+| Command                     | Description                                 |
+| --------------------------- | ------------------------------------------- |
+| `yarn e2e:snapshot:save`    | Save current Jira state to snapshots        |
+| `yarn e2e:snapshot:restore` | Restore Jira from snapshots                 |
+| `yarn e2e:snapshot:check`   | Verify snapshots exist and are valid        |
+| `yarn e2e:fast`             | Use snapshots if available, else full setup |
+
+### CI/CD with Snapshots
+
+For faster CI runs, you can:
+
+1. **Cache snapshots as artifacts** - Save snapshots after first successful run
+2. **Download before tests** - Restore from cached artifacts
+3. **Use `e2e:fast`** - Automatically handles both cases
+
+Example workflow step:
+
+```yaml
+- name: Restore E2E Snapshots
+  uses: actions/cache@v4
+  with:
+    path: e2e/snapshots
+    key: jira-e2e-snapshots-v1
+
+- name: Run E2E Tests (fast mode)
+  run: yarn e2e:fast
+```
+
+### Updating Snapshots
+
+When Jira version changes or test data requirements change:
+
+```bash
+# Remove old snapshots
+rm -rf e2e/snapshots
+
+# Run full setup with new configuration
+yarn e2e:all
+
+# Create new snapshot
+cd e2e/docker && docker compose stop && cd ../..
+yarn e2e:snapshot:save
+```
+
 ## Directory Structure
 
 ```
@@ -91,8 +186,16 @@ e2e/
 ├── scripts/
 │   ├── e2e-config.ts             # Central E2E configuration
 │   ├── jira-client.ts            # Jira REST API client for tests
+│   ├── setup-jira.ts             # Jira setup wizard automation
 │   ├── wait-for-jira.ts          # Readiness check script
-│   └── seed-jira.ts              # Test data seeding script
+│   ├── seed-jira.ts              # Test data seeding script
+│   ├── snapshot-save.ts          # Save Docker volumes to snapshots
+│   ├── snapshot-restore.ts       # Restore Docker volumes from snapshots
+│   └── snapshot-check.ts         # Verify snapshots exist and are valid
+├── snapshots/                    # (gitignored) Snapshot files
+│   ├── jira-data-snapshot.tar.gz
+│   ├── postgres-data-snapshot.tar.gz
+│   └── snapshot-metadata.json
 └── tests/
     ├── fixversion.e2e.test.ts    # FixVersion CRUD E2E tests
     └── transitions.e2e.test.ts   # Action integration E2E tests
