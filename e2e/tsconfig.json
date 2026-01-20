@@ -1,15 +1,17 @@
 {
-  "extends": "../tsconfig.json",
   "compilerOptions": {
     "skipLibCheck": true,
     "lib": ["ESNext"],
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "strict": true,
     "resolveJsonModule": true,
-    "types": ["node", "jest"]
+    "types": ["node"],
+    "outDir": "./dist",
+    "rootDir": "."
   },
-  "include": ["scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["scripts/**/*.ts"],
+  "exclude": ["dist/**/*", "tests/**/*"]
 }

@@ -119,8 +119,9 @@
   "include": ["src"],
   "$schema": "https://json.schemastore.org/tsconfig",
   "ts-node": {
-    // Tell ts-node CLI to install the --loader automatically, explained below
-    "esm": true,
-    "swc": true
+    // Do not use ESM mode for E2E scripts to avoid loader issues with Node 22
+    "compilerOptions": {
+      "module": "CommonJS"
+    }
   }
 }

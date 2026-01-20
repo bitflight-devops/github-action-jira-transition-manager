@@ -19,7 +19,8 @@
   "scripts": {
     "test": "NODE_ENV=testing jest",
     "test-ci": "NODE_ENV=testing jest --ci --reporters=default --reporters=jest-junit",
-    "build": "rimraf dist && tsc && ncc build lib/index.js -o dist --source-map --license licenses.txt",
+    "build": "rimraf dist && tsc && ncc build lib/index.js -o dist --source-map --license licenses.txt && yarn build:e2e",
+    "build:e2e": "tsc --project e2e/tsconfig.json --outDir e2e/dist",
     "format": "prettier --write . --config .prettierrc.cjs --ignore-unknown",
     "lint": "eslint -c .eslintrc.cjs --color ./src/ ./__tests__/",
     "prelint": "yarn run format && tsc --project tsconfig.json --noemit",
@@ -38,8 +39,8 @@
     "pre-push": "echo 'Running pre-push checks'; exit 0",
     "e2e:up": "cd e2e/docker && docker compose up -d",
     "e2e:down": "cd e2e/docker && docker compose down -v",
-    "e2e:wait": "ts-node e2e/scripts/wait-for-jira.ts",
-    "e2e:seed": "ts-node e2e/scripts/seed-jira.ts",
+    "e2e:wait": "node e2e/dist/scripts/wait-for-jira.js",
+    "e2e:seed": "node e2e/dist/scripts/seed-jira.js",
     "e2e:test": "NODE_ENV=testing jest --testMatch='**/e2e/**/*.e2e.test.ts'",
     "e2e:logs": "cd e2e/docker && docker compose logs",
     "e2e:all": "yarn e2e:up && yarn e2e:wait && yarn e2e:seed && yarn e2e:test"
