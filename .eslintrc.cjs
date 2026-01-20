@@ -44,15 +44,10 @@ module.exports = {
         'import/extensions': 'off',
         'sonarjs/no-duplicate-string': 'off',
       },
-      parser: '@babel/eslint-parser',
       env: { es2022: true, node: true },
       parserOptions: {
-        requireConfigFile: false,
         sourceType: 'script',
         ecmaVersion: 'latest',
-        ecmaFeatures: {
-          impliedStrict: true,
-        },
       },
     },
     {
