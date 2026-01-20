@@ -5,10 +5,10 @@ jobs:
     name: runner / eslint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6.0.1
       - uses: actions/setup-node@v6.2.0
         with:
-          node-version: '16.18.0'
+          node-version: '22'
           cache: 'yarn'
       - run: yarn install
       - name: eslint

@@ -10,7 +10,7 @@ jobs:
   tag:
     runs-on: Ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6.0.1
         name: Checkout
         with:
           fetch-depth: 0
@@ -20,7 +20,7 @@ jobs:
           git config user.email "${GITHUB_EMAIL:-github-actions@github.com}"
       - uses: actions/setup-node@v6.2.0
         with:
-          node-version: 12.x
+          node-version: '22'
       - name: Get yarn cache directory path
         id: yarn-cache-dir-path
         run: echo "::set-output name=dir::$(yarn cache dir)"
