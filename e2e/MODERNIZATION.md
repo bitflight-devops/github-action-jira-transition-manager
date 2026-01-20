@@ -28,6 +28,7 @@ All GitHub Actions have been updated to their latest stable versions as of Janua
 ### Format Modernization
 
 - **Removed deprecated `version:` field**: Docker Compose V2 no longer requires or uses the version field
+- **File naming**: Renamed from `docker-compose.yml` to `compose.yml` (modern standard as of Docker Compose 2.0+)
 - The compose file now uses the modern format that's been standard since Docker Compose V2 (2021+)
 
 ### Image Updates (verified via Docker Hub API)
@@ -45,6 +46,46 @@ Modern Docker installations (2021+) include Compose V2 integrated into the Docke
 ```
 
 Our npm scripts already use the modern `docker compose` syntax.
+
+### Filename Standard
+
+- **Modern standard**: `compose.yml` (not `docker-compose.yml`)
+- Docker Compose 2.0+ (2021+) recognizes `compose.yml` as the default filename
+- The older `docker-compose.yml` still works but is considered legacy
+- Using `compose.yml` aligns with current Docker documentation and best practices
+
+## Lessons Learned: Version Selection Process
+
+### Initial Oversight
+
+The first iteration of this PR used outdated versions (PostgreSQL 14.10, Jira 9.12.0, GitHub Actions v3/v4) instead of the latest 2026 releases. This occurred because:
+
+1. **Lack of verification**: Initial versions were selected from training data without runtime verification
+2. **No API checks**: Did not query GitHub API or Docker Hub to confirm latest releases
+3. **Assumption-based selection**: Assumed recent versions from training rather than verifying current releases
+
+### Corrective Actions Taken
+
+1. **API Verification**: All versions now verified via:
+   - GitHub REST API for action versions (`GET /repos/{owner}/{repo}/releases/latest`)
+   - Docker Hub API for container images
+   - Direct version checks at implementation time
+
+2. **Documentation**: Added verification details to `MODERNIZATION.md` showing how each version was confirmed
+
+3. **Prevention Strategy**: Established practice of always verifying versions via API calls rather than relying on cached knowledge
+
+### Best Practices Going Forward
+
+When selecting dependencies and tool versions:
+
+1. **Always verify via API** - Don't trust training data for current versions
+2. **Document verification method** - Show how versions were confirmed
+3. **Use official sources** - GitHub API, Docker Hub, official docs
+4. **Check release dates** - Ensure versions are genuinely current
+5. **Test in target environment** - Verify compatibility with runtime (Node 22, etc.)
+
+This ensures future implementations start with truly current versions rather than outdated ones that happen to be in training data.
 
 ## Rationale
 

@@ -366,7 +366,7 @@ To ensure the system works:
 ### If Docker fails to start:
 
 ```bash
-docker compose -f e2e/docker/docker-compose.yml config  # Validate compose file
+docker compose -f e2e/docker/compose.yml config  # Validate compose file
 docker system df  # Check available disk space
 docker system prune  # Clean up unused resources
 ```

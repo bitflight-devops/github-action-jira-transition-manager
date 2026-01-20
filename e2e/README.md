@@ -87,7 +87,7 @@ yarn e2e:logs
 ```
 e2e/
 ├── docker/
-│   └── docker-compose.yml        # Docker Compose configuration
+│   └── compose.yml               # Docker Compose configuration
 ├── scripts/
 │   ├── e2e-config.ts             # Central E2E configuration
 │   ├── jira-client.ts            # Jira REST API client for tests
@@ -173,7 +173,7 @@ These are set in the Docker environment and seeding scripts.
 If port 8080 or 5432 are already in use:
 
 1. Stop conflicting services
-2. Or modify ports in `docker/docker-compose.yml`
+2. Or modify ports in `docker/compose.yml`
 
 ### Out of memory
 
@@ -181,7 +181,7 @@ Jira requires at least 4GB RAM. If containers crash:
 
 1. Check available Docker memory: `docker stats`
 2. Increase Docker Desktop memory limits
-3. Reduce JVM memory in docker-compose.yml (not recommended)
+3. Reduce JVM memory in compose.yml (not recommended)
 
 ### Clean slate
 
