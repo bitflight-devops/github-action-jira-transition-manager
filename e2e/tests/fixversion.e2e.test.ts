@@ -3,7 +3,7 @@
  * Tests the action logic against a real Jira instance
  */
 import { getE2EConfig } from '../scripts/e2e-config';
-import { JiraE2EClient, JiraVersion } from '../scripts/jira-client';
+import { JiraE2EClient } from '../scripts/jira-client';
 
 describe('FixVersion E2E Tests', () => {
   let config: ReturnType<typeof getE2EConfig>;

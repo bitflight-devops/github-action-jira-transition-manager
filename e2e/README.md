@@ -31,7 +31,15 @@ This provides deterministic testing while being as Cloud-compatible as possible.
 
    This starts PostgreSQL and Jira Software containers.
 
-2. **Wait for Jira to be ready:**
+2. **Setup Jira (first run only):**
+
+   ```bash
+   yarn e2e:setup
+   ```
+
+   This automates the Jira setup wizard (database configuration, admin account creation). On subsequent runs with existing data, this step detects the configuration and skips.
+
+3. **Wait for Jira to be ready:**
 
    ```bash
    yarn e2e:wait
@@ -39,7 +47,7 @@ This provides deterministic testing while being as Cloud-compatible as possible.
 
    This polls Jira until it responds to authenticated requests (may take 3-5 minutes on first run).
 
-3. **Seed test data:**
+4. **Seed test data:**
 
    ```bash
    yarn e2e:seed
@@ -47,13 +55,13 @@ This provides deterministic testing while being as Cloud-compatible as possible.
 
    This creates a test project (E2E), initial version (1.0.0), and test issue.
 
-4. **Run the tests:**
+5. **Run the tests:**
 
    ```bash
    yarn e2e:test
    ```
 
-5. **Stop the stack:**
+6. **Stop the stack:**
    ```bash
    yarn e2e:down
    ```

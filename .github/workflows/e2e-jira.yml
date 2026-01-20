@@ -36,6 +36,14 @@ jobs:
         run: yarn e2e:up
         timeout-minutes: 5
 
+      - name: Setup Jira (automated wizard)
+        run: yarn e2e:setup
+        timeout-minutes: 5
+        env:
+          E2E_JIRA_BASE_URL: http://localhost:8080
+          E2E_JIRA_USERNAME: admin
+          E2E_JIRA_PASSWORD: admin
+
       - name: Wait for Jira to be ready
         run: yarn e2e:wait
         timeout-minutes: 10
