@@ -37,5 +37,5 @@ outputs:
       A JSON list of Jira Issues and their transition details
 
 runs:
-  using: 'node16'
+  using: 'node22'
   main: './dist/index.js'

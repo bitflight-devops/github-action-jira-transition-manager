@@ -366,17 +366,17 @@ To ensure the system works:
 ### If Docker fails to start:
 
 ```bash
-docker compose -f e2e/docker/compose.yml config  # Validate compose file
-docker system df  # Check available disk space
-docker system prune  # Clean up unused resources
+docker compose -f e2e/docker/compose.yml config # Validate compose file
+docker system df                                # Check available disk space
+docker system prune                             # Clean up unused resources
 ```
 
 ### If Jira won't start:
 
 ```bash
-docker logs jira-e2e --tail 100  # Check recent logs
-docker stats jira-e2e  # Check resource usage
-docker exec jira-e2e ps aux  # Check running processes
+docker logs jira-e2e --tail 100 # Check recent logs
+docker stats jira-e2e           # Check resource usage
+docker exec jira-e2e ps aux     # Check running processes
 ```
 
 ### If tests fail:

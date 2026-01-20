@@ -1,4 +1,5 @@
 module.exports = {
+  plugins: ['prettier-plugin-sh'],
   tabWidth: 2,
   useTabs: false,
   printWidth: 120,

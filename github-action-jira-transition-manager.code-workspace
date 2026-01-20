@@ -1,8 +1,8 @@
 {
   "folders": [
     {
-      "path": "."
-    }
+      "path": ".",
+    },
   ],
   "settings": {
     "javascript.format.semicolons": "ignore",
@@ -12,8 +12,8 @@
     "javascript.preferences.quoteStyle": "single",
     "vetur.format.defaultFormatterOptions": {
       "prettier": {
-        "semi": false
-      }
-    }
-  }
+        "semi": false,
+      },
+    },
+  },
 }

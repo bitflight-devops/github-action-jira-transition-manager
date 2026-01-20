@@ -207,7 +207,9 @@ exports["default"] = Jira;
 
 /* eslint-disable @typescript-eslint/prefer-for-of */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.checkConditions = exports.objEquals = exports.isObject = void 0;
+exports.isObject = void 0;
+exports.objEquals = objEquals;
+exports.checkConditions = checkConditions;
 const tslib_1 = __nccwpck_require__(4351);
 const fs = tslib_1.__importStar(__nccwpck_require__(87561));
 const core = tslib_1.__importStar(__nccwpck_require__(42186));
@@ -221,13 +223,11 @@ function objEquals(v1, v2) {
     core.debug(`Comparing a:${JSON.stringify(v1)} to b:${JSON.stringify(v2)} (${v1 === v2})`);
     return v1 === v2;
 }
-exports.objEquals = objEquals;
 function checkConditions(a, b) {
     return Object.keys(b).some((k) => {
         return (0, exports.isObject)(a[k]) && (0, exports.isObject)(b[k]) ? checkConditions(a[k], b[k]) : objEquals(a[k], b[k]);
     });
 }
-exports.checkConditions = checkConditions;
 const yamlConfigPath = '.github/github_event_jira_transitions.';
 class TransitionEventManager {
     context;
@@ -379,7 +379,10 @@ exports.Action = Action;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.loadFileSync = exports.fileExistsSync = exports.existsSync = exports.directoryExistsSync = void 0;
+exports.directoryExistsSync = directoryExistsSync;
+exports.existsSync = existsSync;
+exports.fileExistsSync = fileExistsSync;
+exports.loadFileSync = loadFileSync;
 const tslib_1 = __nccwpck_require__(4351);
 const fs = tslib_1.__importStar(__nccwpck_require__(87561));
 const node_fs_1 = __nccwpck_require__(87561);
@@ -398,14 +401,12 @@ function directoryExistsSync(path, required) {
     }
     throw new Error(`Directory '${path}' does not exist`);
 }
-exports.directoryExistsSync = directoryExistsSync;
 function existsSync(path) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
     }
     return fs.existsSync(path);
 }
-exports.existsSync = existsSync;
 function fileExistsSync(path) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
@@ -418,7 +419,6 @@ function fileExistsSync(path) {
     }
     return false;
 }
-exports.fileExistsSync = fileExistsSync;
 function loadFileSync(path) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
@@ -433,7 +433,6 @@ function loadFileSync(path) {
     }
     throw new Error(`Encountered an error when reading file '${path}': file not there`);
 }
-exports.loadFileSync = loadFileSync;
 
 
 /***/ }),
@@ -444,7 +443,7 @@ exports.loadFileSync = loadFileSync;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getInputs = void 0;
+exports.getInputs = getInputs;
 const tslib_1 = __nccwpck_require__(4351);
 const path = tslib_1.__importStar(__nccwpck_require__(49411));
 const core = tslib_1.__importStar(__nccwpck_require__(42186));
@@ -480,7 +479,6 @@ function getInputs() {
     core.debug(`Jira Transitions YAML input: \n${result.jiraTransitionsYaml}`);
     return result;
 }
-exports.getInputs = getInputs;
 
 
 /***/ }),

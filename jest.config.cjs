@@ -1,8 +1,6 @@
-// jest.config.ts
-import type { Config } from '@jest/types';
-
-// Sync object
-const config: Config.InitialOptions = {
+// jest.config.cjs
+/** @type {import('@jest/types').Config.InitialOptions} */
+const config = {
   clearMocks: true,
   moduleFileExtensions: ['js', 'ts'],
   testEnvironment: 'node',
@@ -17,4 +15,4 @@ const config: Config.InitialOptions = {
   testTimeout: 50000,
   verbose: true,
 };
-export default config;
+module.exports = config;
