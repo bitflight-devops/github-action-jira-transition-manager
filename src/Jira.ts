@@ -1,6 +1,4 @@
-import { Version2Client } from 'jira.js';
-import { Issue as JiraIssue, IssueTransition, Transitions } from 'jira.js/out/version3/models/index';
-import { DoTransition, GetIssue, GetTransitions } from 'jira.js/out/version3/parameters/index';
+import { Version2Client, Version2Models, Version2Parameters } from 'jira.js';
 
 import { JiraConfig } from './@types';
 
@@ -19,7 +17,6 @@ export default class Jira {
     this.email = conf.email;
     this.client = new Version2Client({
       host: this.baseUrl,
-      telemetry: false,
       authentication: {
         basic: {
           email: this.email,
@@ -35,8 +32,8 @@ export default class Jira {
       fields?: string[];
       expand?: string;
     },
-  ): Promise<JiraIssue> {
-    const params: GetIssue = {
+  ): Promise<Version2Models.Issue> {
+    const params: Version2Parameters.GetIssue = {
       issueIdOrKey: issueId,
     };
     if (query != null) {
@@ -47,15 +44,15 @@ export default class Jira {
     return this.client.issues.getIssue(params);
   }
 
-  async getIssueTransitions(issueId: string): Promise<Transitions> {
-    const params: GetTransitions = {
+  async getIssueTransitions(issueId: string): Promise<Version2Models.Transitions> {
+    const params: Version2Parameters.GetTransitions = {
       issueIdOrKey: issueId,
     };
     return this.client.issues.getTransitions(params);
   }
 
-  async transitionIssue(issueId: string, data: IssueTransition): Promise<object> {
-    const params: DoTransition = {
+  async transitionIssue(issueId: string, data: Version2Models.IssueTransition): Promise<object> {
+    const params: Version2Parameters.DoTransition = {
       issueIdOrKey: issueId,
       transition: data,
     };
