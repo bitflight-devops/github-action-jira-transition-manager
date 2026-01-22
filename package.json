@@ -90,8 +90,6 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.6",
-    "@babel/preset-env": "^7.28.6",
     "@commitlint/cli": "^20",
     "@commitlint/config-conventional": "^20",
     "@commitlint/prompt": "^20",
