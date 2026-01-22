@@ -48,7 +48,7 @@ export const defaultConfig: E2EConfig = {
     issueType: 'Task',
   },
   timeouts: {
-    jiraReady: 300000, // 5 minutes for Jira to be ready
+    jiraReady: 600000, // 10 minutes for Jira to be ready (DC takes longer on first run)
     apiCall: 30000, // 30 seconds for individual API calls
     testTimeout: 60000, // 1 minute for individual tests
   },

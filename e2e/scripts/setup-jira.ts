@@ -26,10 +26,10 @@ async function setupJira(): Promise<void> {
   console.log('Starting Jira setup wizard automation...');
   console.log(`Base URL: ${baseUrl}`);
 
-  // Wait for Jira to be HTTP accessible
+  // Wait for Jira to be HTTP accessible (accept 503 as server is running but initializing)
   console.log('Waiting for Jira HTTP to be available...');
   let httpReady = false;
-  const httpTimeout = 180000; // 3 minutes
+  const httpTimeout = 300000; // 5 minutes (Jira DC takes longer to initialize)
   const httpStart = Date.now();
 
   while (!httpReady && Date.now() - httpStart < httpTimeout) {
@@ -39,11 +39,14 @@ async function setupJira(): Promise<void> {
       const response = await fetch(`${baseUrl}/status`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      if (response.ok) {
+      // Accept any HTTP response (including 503) as the server is running
+      if (response.status > 0) {
         httpReady = true;
-        console.log('✓ Jira HTTP is available');
+        console.log(`✓ Jira HTTP is available (status: ${response.status})`);
       }
     } catch (error) {
+      const elapsed = Math.round((Date.now() - httpStart) / 1000);
+      console.log(`⏳ Waiting for HTTP... (${elapsed}s) - ${(error as Error).message}`);
       await sleep(5000);
     }
   }
