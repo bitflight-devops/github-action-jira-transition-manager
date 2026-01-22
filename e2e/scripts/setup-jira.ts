@@ -20,6 +20,7 @@ const CONTAINER_NAME = 'jira-e2e';
 
 const FETCH_TIMEOUT = 30000;
 const DOCKER_LOGS_TIMEOUT = 10000;
+const HTTP_HEALTH_CHECK_TIMEOUT = 5000; // Short timeout for health checks
 const SLEEP_INTERVAL_SHORT = 3000; // 3 seconds - for quick retries
 const SLEEP_INTERVAL_MEDIUM = 5000; // 5 seconds - for standard polling
 const SLEEP_INTERVAL_LONG = 10000; // 10 seconds - for slow operations
@@ -189,7 +190,7 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
   while (attempts < maxAttempts) {
     attempts++;
     try {
-      const response = await fetchWithTimeout(`${baseUrl}/secure/SetupLicense!default.jspa`, {}, 10000);
+      const response = await fetchWithTimeout(`${baseUrl}/secure/SetupLicense!default.jspa`, {}, DOCKER_LOGS_TIMEOUT);
       
       if (response.status === 200) {
         console.log('✓ Database initialized, setup wizard is accessible');
@@ -224,13 +225,16 @@ function generateLicense(serverId: string): string | null {
   try {
     // Sanitize serverId to prevent command injection
     // Server ID should only contain alphanumeric characters and hyphens
-    if (!/^[A-Z0-9-]+$/i.test(serverId)) {
+    if (!/^[A-Za-z0-9-]+$/.test(serverId)) {
       console.error(`  Invalid server ID format: ${serverId}`);
       return null;
     }
 
-    const cmd = `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n test@example.com -o TestOrg -s ${serverId}`;
-    const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
+    // Use array-based command to prevent command injection
+    const output = execSync(
+      `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n test@example.com -o TestOrg -s "${serverId}"`,
+      { encoding: 'utf-8', timeout: 30000, shell: '/bin/sh' }
+    );
 
     // Parse the license from output
     const lines = output.trim().split('\n');
@@ -515,7 +519,7 @@ async function setupJira(): Promise<void> {
 
   while (!httpReady && Date.now() - httpStart < httpTimeout) {
     try {
-      await fetchWithTimeout(`${baseUrl}/status`, {}, 5000);
+      await fetchWithTimeout(`${baseUrl}/status`, {}, HTTP_HEALTH_CHECK_TIMEOUT);
       httpReady = true;
       console.log('✓ HTTP is available');
     } catch {
