@@ -3,20 +3,88 @@ on:
   push:
     branches:
       - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  JIRA_BASE_URL: http://localhost:8080
+  JIRA_USER_EMAIL: admin
+  JIRA_API_TOKEN: admin
 
 jobs:
-  test-transition-issue:
-    name: Transition Issue
+  test-action-in-place:
+    name: Test Action In-Place
     runs-on: ubuntu-latest
-    env:
-      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
-      JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL || secrets.JIRA_EMAIL}}
-      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN || secrets.JIRA_EMAIL }}
-    steps:
-      - uses: actions/checkout@v6.0.1
-        name: Checkout
+    timeout-minutes: 20
 
-      - name: List Issue Transitions
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build action
+        run: yarn build
+
+      - name: Restore E2E snapshots from cache
+        id: cache-snapshots
+        uses: actions/cache@v5
+        with:
+          path: e2e/snapshots
+          key: jira-e2e-snapshots-${{ hashFiles('e2e/docker/compose.yml') }}
+
+      - name: Check snapshot validity
+        id: snapshot-check
+        run: |
+          if yarn e2e:snapshot:check --quiet; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Restore from snapshots (fast path)
+        if: steps.snapshot-check.outputs.valid == 'true'
+        run: |
+          yarn e2e:snapshot:restore --force
+          yarn e2e:up
+          yarn e2e:wait
+        timeout-minutes: 5
+
+      - name: Full Jira setup (slow path)
+        if: steps.snapshot-check.outputs.valid != 'true'
+        run: |
+          yarn e2e:up
+          yarn e2e:setup
+          yarn e2e:wait
+          yarn e2e:seed
+        timeout-minutes: 15
+
+      - name: Create test issue
+        id: create-issue
+        run: |
+          # Create a test issue and capture its key
+          ISSUE_KEY=$(curl -s -u admin:admin -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"fields":{"project":{"key":"E2E"},"summary":"Action in-place test","issuetype":{"name":"Task"}}}' \
+            http://localhost:8080/rest/api/2/issue | jq -r '.key')
+          echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+          echo "Created test issue: $ISSUE_KEY"
+
+      - name: Test Action - List Transitions
         uses: ./
         with:
-          issues: ${{ secrets.JIRA_TEST_ISSUE_KEY }}
+          issues: ${{ steps.create-issue.outputs.issue_key }}
+
+      - name: Stop Docker Compose
+        if: always()
+        run: yarn e2e:down
