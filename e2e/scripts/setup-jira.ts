@@ -158,6 +158,8 @@ function extractCsrfToken(html: string): string | null {
     /name="atlassian-token"\s+value="([^"]+)"/,
     /data-atl-token="([^"]+)"/,
     /"atl_token":"([^"]+)"/,
+    /value="([^"]+)"\s+name="atl_token"/,
+    /name='atl_token'\s+value='([^']+)'/,
   ];
 
   for (const pattern of patterns) {
@@ -167,7 +169,41 @@ function extractCsrfToken(html: string): string | null {
       return match[1];
     }
   }
+
+  // Debug: show what tokens might be in the HTML
+  const hiddenInputs = html.match(/<input[^>]*type="hidden"[^>]*>/gi);
+  if (hiddenInputs && hiddenInputs.length > 0) {
+    console.log(`  [DEBUG] Hidden inputs found: ${hiddenInputs.slice(0, 3).join(', ')}`);
+  }
+
   return null;
+}
+
+/**
+ * Debug: Extract and log all form fields from HTML
+ */
+function debugFormFields(html: string, formName: string): void {
+  console.log(`  [DEBUG] Analyzing form fields for ${formName}:`);
+
+  // Find form element
+  const formMatch = html.match(/<form[^>]*>([\s\S]*?)<\/form>/i);
+  if (!formMatch) {
+    console.log(`  [DEBUG] No form found in HTML`);
+    return;
+  }
+
+  // Find all input fields
+  const inputs = formMatch[1].match(/<input[^>]*>/gi) || [];
+  for (const input of inputs.slice(0, 10)) {
+    const nameMatch = input.match(/name=["']([^"']+)["']/);
+    const typeMatch = input.match(/type=["']([^"']+)["']/);
+    const valueMatch = input.match(/value=["']([^"']+)["']/);
+    if (nameMatch) {
+      console.log(
+        `    - ${nameMatch[1]} (${typeMatch?.[1] || 'text'}): ${valueMatch?.[1]?.substring(0, 30) || '(empty)'}`,
+      );
+    }
+  }
 }
 
 /**
@@ -201,9 +237,10 @@ async function selectSetupMode(baseUrl: string): Promise<boolean> {
       return true;
     }
 
-    // Extract CSRF token
+    // Extract CSRF token and debug form fields
     const csrfToken = extractCsrfToken(setupPage);
-    const formAction = extractFormAction(setupPage, `${baseUrl}/secure/SetupMode.jspa`);
+    const formAction = extractFormAction(setupPage, '/secure/SetupMode.jspa');
+    debugFormFields(setupPage, 'SetupMode');
 
     // Build form data
     const formData: Record<string, string> = {
@@ -262,9 +299,10 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
       return true;
     }
 
-    // Extract CSRF token
+    // Extract CSRF token and debug form fields
     const csrfToken = extractCsrfToken(dbPage);
     const formAction = extractFormAction(dbPage, '/secure/SetupDatabase.jspa');
+    debugFormFields(dbPage, 'SetupDatabase');
 
     // Start watching logs BEFORE submitting the form
     const logWatchPromise = watchDockerLogs(
