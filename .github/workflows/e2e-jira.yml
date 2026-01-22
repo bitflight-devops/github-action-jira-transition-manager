@@ -85,6 +85,25 @@ jobs:
         run: yarn e2e:test
         timeout-minutes: 10
 
+      - name: Create test issue for action
+        id: create-issue
+        run: |
+          ISSUE_KEY=$(curl -s -u admin:admin -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"fields":{"project":{"key":"E2E"},"summary":"Action in-place test","issuetype":{"name":"Task"}}}' \
+            http://localhost:8080/rest/api/2/issue | jq -r '.key')
+          echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+          echo "Created test issue: $ISSUE_KEY"
+
+      - name: Test Action In-Place
+        uses: ./
+        env:
+          JIRA_BASE_URL: http://localhost:8080
+          JIRA_USER_EMAIL: admin
+          JIRA_API_TOKEN: admin
+        with:
+          issues: ${{ steps.create-issue.outputs.issue_key }}
+
       - name: Save snapshots for cache
         if: steps.snapshot-check.outputs.valid != 'true' && success()
         run: |
