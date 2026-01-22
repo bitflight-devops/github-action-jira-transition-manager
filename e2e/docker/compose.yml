@@ -31,6 +31,7 @@ services:
       - '8080:8080'
     volumes:
       - jira-data:/var/jira
+      - ./dbconfig.xml:/var/jira/dbconfig.xml:ro
     networks:
       - jira-network
     healthcheck:

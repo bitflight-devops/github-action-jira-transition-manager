@@ -24,7 +24,7 @@ The Jira client is mocked using `vi.mock('../src/Jira')` to avoid real API calls
 
 ### E2E Tests
 
-**Status: Not yet working - setup wizard automation failing**
+**Status: Improved with dbconfig.xml pre-configuration**
 
 E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image.
 
@@ -32,6 +32,7 @@ E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image
 
 - Config: `e2e/docker/compose.yml`
 - Image: `haxqer/jira:9.17.5` with MySQL 8.0
+- Pre-configured `dbconfig.xml` for database connection
 - The haxqer image includes `atlassian-agent.jar` for license generation
 
 #### E2E Scripts
@@ -40,7 +41,7 @@ Located in `e2e/scripts/`:
 
 | Script             | Purpose                                   |
 | ------------------ | ----------------------------------------- |
-| `setup-jira.ts`    | Automates the Jira setup wizard           |
+| `setup-jira.ts`    | Automates post-database setup wizard steps |
 | `wait-for-jira.ts` | Waits for Jira API to be ready            |
 | `seed-jira.ts`     | Creates test project and issues           |
 | `snapshot-*.ts`    | Save/restore Docker volumes for faster CI |
@@ -52,53 +53,41 @@ File: `.github/workflows/e2e-jira.yml`
 The workflow has two paths:
 
 1. **Fast path**: Restore from cached Docker volume snapshots
-2. **Slow path**: Full Jira setup from scratch
+2. **Slow path**: Full Jira setup from scratch with dbconfig.xml
 
-## What Has Been Tried (E2E Setup)
+## E2E Setup Approach
 
-### Problem: Jira Setup Wizard Automation
+### Solution: Pre-configured dbconfig.xml
 
-The `setup-jira.ts` script attempts to automate the Jira DC setup wizard by:
+**Key Discovery**: The haxqer/jira image does NOT support environment variables for database configuration. The proper headless setup approach is to pre-configure the `dbconfig.xml` file.
 
-1. Selecting manual setup mode
-2. Configuring MySQL database connection
-3. Generating and submitting license via `atlassian-agent.jar`
-4. Setting application properties
-5. Creating admin account
+**Implementation**:
+1. `e2e/docker/dbconfig.xml` contains MySQL connection settings
+2. Docker Compose mounts it to `/var/jira/dbconfig.xml` (read-only)
+3. Jira auto-detects and uses it on first startup
+4. Database schema is initialized automatically
+5. Setup wizard skips the database configuration step
 
-### Issues Encountered
+**Benefits**:
+- Eliminates fragile HTTP form automation for database setup
+- No need for CSRF token handling or session management for DB config
+- Database initialization happens before accessing other wizard pages
+- Fixes the 404 errors that occurred when trying to access license page before DB was ready
 
-1. **403 Forbidden on form submissions**
-   - Jira requires CSRF tokens (`atl_token`) for all POST requests
-   - Added token extraction from HTML forms
-   - Still getting 403 - may need cookie/session handling
+### Remaining Setup Steps
 
-2. **URL path parsing**
-   - Form actions were missing leading `/` (e.g., `SetupMode.jspa` instead of `/SetupMode.jspa`)
-   - Fixed with `extractFormAction()` normalization
+The `setup-jira.ts` script now handles only:
+1. **License**: Waits for database init, generates and submits license
+2. **Application Properties**: Sets title, mode, base URL
+3. **Admin Account**: Creates the admin user
 
-3. **Setup wizard flow**
-   - The wizard returns 404 for later steps if earlier steps haven't completed
-   - Database must be configured before license page is available
+These steps still require web automation but are much simpler without the database configuration complexity.
 
-### Current Debug Output
+### Previous Issues (Now Resolved)
 
-The script now logs:
-
-- All form fields found in HTML
-- CSRF tokens extracted
-- Hidden input fields
-- HTTP response status codes
-
-### What's Needed to Progress
-
-1. **Session/Cookie handling**: The 403 errors may require maintaining a session cookie across requests. Node's `fetch` doesn't automatically handle cookies.
-
-2. **Verify form field names**: Need to capture the actual HTML from the setup pages to see exact field names Jira expects. The debug logging should help with this.
-
-3. **Alternative approach**: Consider using Puppeteer/Playwright for browser automation instead of raw HTTP requests, as this would handle cookies, JavaScript, and redirects automatically.
-
-4. **Pre-configured image**: Another option is to create a pre-configured Jira Docker image with setup already completed, avoiding the wizard entirely.
+1. **403 Forbidden on database form submissions** - Fixed by pre-configuring dbconfig.xml
+2. **404 on license page** - Fixed by ensuring database is initialized before accessing wizard
+3. **Session/Cookie handling** - Simplified by removing database configuration step
 
 ## Configuration Files
 
