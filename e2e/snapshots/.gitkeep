@@ -1,0 +1,3 @@
+# This directory stores Jira E2E test snapshots.
+# Snapshot files (*.tar.gz) are gitignored but this directory is preserved.
+# Run `yarn e2e:snapshot:save` to create snapshots after setup.

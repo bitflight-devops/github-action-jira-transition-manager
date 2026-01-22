@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import { Context } from '@actions/github/lib/context';
-import { Issue as JiraIssue, IssueTransition } from 'jira.js/out/version3/models';
+import { Version2Models } from 'jira.js';
 import _ from 'lodash';
 
 import { Args } from './@types';
@@ -31,9 +31,9 @@ export default class Issue {
 
   jira: Jira;
 
-  issueObject: JiraIssue | null = null;
+  issueObject: Version2Models.Issue | null = null;
 
-  issueTransitions: IssueTransition[] | undefined = undefined;
+  issueTransitions: Version2Models.IssueTransition[] | undefined = undefined;
 
   transitionsLogString: string[] = [];
 
@@ -43,7 +43,8 @@ export default class Issue {
 
   constructor(issue: string, jira: Jira, argv: Args, context: Context) {
     this.issue = issue;
-    const pmatch = issue.match(/(?<projectName>[A-Za-z]{2,})-\d{2,}/);
+    const issuePattern = /^(?<projectName>[A-Z]{2,10})-\d+$/i;
+    const pmatch = issuePattern.exec(issue);
     this.projectName = pmatch?.groups?.projectName.toUpperCase() ?? '';
     this.jira = jira;
     this.argv = argv;
@@ -83,24 +84,24 @@ export default class Issue {
     return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.status);
   }
 
-  transitionToApply(): IssueTransition | undefined {
+  transitionToApply(): Version2Models.IssueTransition | undefined {
     if (this.toStatus) {
       const iT = _.find(this.issueTransitions, (t) => {
         if (t.to && t.to.name?.toLowerCase() === this.toStatus?.toLowerCase()) {
           return true;
         }
-      }) as IssueTransition;
+      }) as Version2Models.IssueTransition;
       return {
         ...iT,
         isGlobal: true,
-      } as IssueTransition;
+      } as Version2Models.IssueTransition;
     }
     if (this.status) {
       return _.find(this.issueTransitions, (t) => {
         if (t.name?.toLowerCase?.() === this.status?.toLowerCase()) {
           return true;
         }
-      }) as IssueTransition;
+      }) as Version2Models.IssueTransition;
     }
     return undefined;
   }
@@ -151,7 +152,7 @@ export default class Issue {
     this.issue = issue;
   }
 
-  async getTransitions(): Promise<IssueTransition[] | undefined> {
+  async getTransitions(): Promise<Version2Models.IssueTransition[] | undefined> {
     const { transitions } = await this.jira.getIssueTransitions(this.issue);
 
     if (transitions == null) {
@@ -161,7 +162,7 @@ export default class Issue {
     return transitions;
   }
 
-  async getJiraIssueObject(): Promise<JiraIssue> {
+  async getJiraIssueObject(): Promise<Version2Models.Issue> {
     this.issueObject = await this.jira.getIssue(this.issue);
     return this.issueObject;
   }

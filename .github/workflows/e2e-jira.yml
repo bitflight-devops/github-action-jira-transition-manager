@@ -6,9 +6,20 @@ on:
       - main
       - develop
   workflow_dispatch:
+    inputs:
+      skip_cache:
+        description: 'Skip snapshot cache (force full setup)'
+        required: false
+        default: 'false'
+        type: boolean
   push:
     branches:
       - main
+
+env:
+  E2E_JIRA_BASE_URL: http://localhost:8080
+  E2E_JIRA_USERNAME: admin
+  E2E_JIRA_PASSWORD: admin
 
 jobs:
   e2e-jira:
@@ -18,10 +29,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6.2.0
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'yarn'
@@ -29,56 +40,70 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build action
+      - name: Build action and E2E scripts
         run: yarn build
 
-      - name: Start Docker Compose (Jira + PostgreSQL)
-        run: yarn e2e:up
+      - name: Restore E2E snapshots from cache
+        if: ${{ github.event.inputs.skip_cache != 'true' }}
+        id: cache-snapshots
+        uses: actions/cache@v5
+        with:
+          path: e2e/snapshots
+          key: jira-e2e-snapshots-${{ hashFiles('e2e/docker/compose.yml') }}
+
+      - name: Check snapshot validity
+        id: snapshot-check
+        run: |
+          if yarn e2e:snapshot:check --quiet; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "Snapshots are valid and ready to restore"
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "Snapshots not available, will run full setup"
+          fi
+
+      - name: Restore from snapshots (fast path)
+        if: steps.snapshot-check.outputs.valid == 'true'
+        run: |
+          echo "=== Restoring Jira from snapshots ==="
+          yarn e2e:snapshot:restore --force
+          yarn e2e:up
+          yarn e2e:wait
         timeout-minutes: 5
 
-      - name: Setup Jira (automated wizard)
-        run: yarn e2e:setup
-        timeout-minutes: 5
-        env:
-          E2E_JIRA_BASE_URL: http://localhost:8080
-          E2E_JIRA_USERNAME: admin
-          E2E_JIRA_PASSWORD: admin
-
-      - name: Wait for Jira to be ready
-        run: yarn e2e:wait
-        timeout-minutes: 10
-        env:
-          E2E_JIRA_BASE_URL: http://localhost:8080
-          E2E_JIRA_USERNAME: admin
-          E2E_JIRA_PASSWORD: admin
-
-      - name: Seed Jira with test data
-        run: yarn e2e:seed
-        timeout-minutes: 5
-        env:
-          E2E_JIRA_BASE_URL: http://localhost:8080
-          E2E_JIRA_USERNAME: admin
-          E2E_JIRA_PASSWORD: admin
+      - name: Full Jira setup (slow path)
+        if: steps.snapshot-check.outputs.valid != 'true'
+        run: |
+          echo "=== Running full Jira setup ==="
+          yarn e2e:up
+          yarn e2e:setup
+          yarn e2e:wait
+          yarn e2e:seed
+        timeout-minutes: 15
 
       - name: Run E2E tests
         run: yarn e2e:test
         timeout-minutes: 10
-        env:
-          E2E_JIRA_BASE_URL: http://localhost:8080
-          E2E_JIRA_USERNAME: admin
-          E2E_JIRA_PASSWORD: admin
+
+      - name: Save snapshots for cache
+        if: steps.snapshot-check.outputs.valid != 'true' && success()
+        run: |
+          echo "=== Saving snapshots for future runs ==="
+          cd e2e/docker && docker compose stop && cd ../..
+          yarn e2e:snapshot:save
+          echo "Snapshot saved successfully"
 
       - name: Collect Docker logs on failure
         if: failure()
         run: |
           mkdir -p e2e/artifacts
-          yarn e2e:logs > e2e/artifacts/docker-logs.txt 2>&1
-          docker ps -a > e2e/artifacts/containers.txt 2>&1
-          docker stats --no-stream > e2e/artifacts/stats.txt 2>&1
+          yarn e2e:logs > e2e/artifacts/docker-logs.txt 2>&1 || true
+          docker ps -a > e2e/artifacts/containers.txt 2>&1 || true
+          docker stats --no-stream > e2e/artifacts/stats.txt 2>&1 || true
 
       - name: Upload E2E artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-artifacts
           path: e2e/artifacts/
