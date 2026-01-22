@@ -18,6 +18,12 @@ import { getE2EConfig } from './e2e-config';
 
 const CONTAINER_NAME = 'jira-e2e';
 
+const FETCH_TIMEOUT = 30000;
+const DOCKER_LOGS_TIMEOUT = 10000;
+const SLEEP_INTERVAL_SHORT = 3000; // 3 seconds - for quick retries
+const SLEEP_INTERVAL_MEDIUM = 5000; // 5 seconds - for standard polling
+const SLEEP_INTERVAL_LONG = 10000; // 10 seconds - for slow operations
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -87,8 +93,9 @@ async function watchDockerLogs(
         });
     });
 
-    dockerLogs.on('error', () => {
+    dockerLogs.on('error', (err) => {
       if (!resolved) {
+        console.log(`  Docker logs error: ${err.message}`);
         clearTimeout(timeoutId);
         resolve({ success: false });
       }
@@ -110,14 +117,14 @@ function getDockerLogs(containerName: string, lines = 50): string {
   try {
     return execSync(`docker logs --tail ${lines} ${containerName} 2>&1`, {
       encoding: 'utf-8',
-      timeout: 10000,
+      timeout: DOCKER_LOGS_TIMEOUT,
     });
   } catch {
     return '';
   }
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 30000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = FETCH_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -191,7 +198,7 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
 
       if (response.status === 404) {
         console.log(`  Attempt ${attempts}/${maxAttempts}: Waiting for database init...`);
-        await sleep(10000);
+        await sleep(SLEEP_INTERVAL_LONG);
         continue;
       }
 
@@ -202,7 +209,7 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
       }
     } catch (error) {
       console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
-      await sleep(10000);
+      await sleep(SLEEP_INTERVAL_LONG);
     }
   }
 
@@ -215,6 +222,13 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
  */
 function generateLicense(serverId: string): string | null {
   try {
+    // Sanitize serverId to prevent command injection
+    // Server ID should only contain alphanumeric characters and hyphens
+    if (!/^[A-Z0-9-]+$/i.test(serverId)) {
+      console.error(`  Invalid server ID format: ${serverId}`);
+      return null;
+    }
+
     const cmd = `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n test@example.com -o TestOrg -s ${serverId}`;
     const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
 
@@ -283,10 +297,10 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
       if (serverId) break;
 
       console.log(`  Attempt ${attempts}/${maxAttempts}: Waiting for server ID...`);
-      await sleep(5000);
+      await sleep(SLEEP_INTERVAL_MEDIUM);
     } catch (error) {
       console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
-      await sleep(5000);
+      await sleep(SLEEP_INTERVAL_MEDIUM);
     }
   }
 
@@ -320,7 +334,7 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ License submitted');
-      await sleep(5000);
+      await sleep(SLEEP_INTERVAL_MEDIUM);
       return true;
     }
 
@@ -362,7 +376,7 @@ async function configureAppProperties(baseUrl: string): Promise<boolean> {
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ Application properties configured');
-      await sleep(3000);
+      await sleep(SLEEP_INTERVAL_SHORT);
       return true;
     }
 
@@ -406,7 +420,7 @@ async function createAdminAccount(baseUrl: string, username: string, password: s
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ Admin account created');
-      await sleep(3000);
+      await sleep(SLEEP_INTERVAL_SHORT);
       return true;
     }
 
@@ -446,7 +460,7 @@ async function verifyJiraReady(baseUrl: string, username: string, password: stri
       console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
     }
 
-    await sleep(5000);
+    await sleep(SLEEP_INTERVAL_MEDIUM);
   }
 
   console.log('✗ Jira API did not become ready');
@@ -505,7 +519,7 @@ async function setupJira(): Promise<void> {
       httpReady = true;
       console.log('✓ HTTP is available');
     } catch {
-      await sleep(3000);
+      await sleep(SLEEP_INTERVAL_SHORT);
     }
   }
 
