@@ -207,6 +207,45 @@ function generateLicense(serverId: string): string | null {
 }
 
 /**
+ * Parse Set-Cookie headers and return a Cookie header string
+ */
+function parseCookies(response: Response): string {
+  const cookies: string[] = [];
+
+  // Try getSetCookie() first (Node 18.14.1+)
+  if ('getSetCookie' in response.headers && typeof response.headers.getSetCookie === 'function') {
+    const setCookies = response.headers.getSetCookie();
+    for (const cookie of setCookies) {
+      // Extract just name=value (before the first ;)
+      const nameValue = cookie.split(';')[0].trim();
+      if (nameValue) cookies.push(nameValue);
+    }
+  } else {
+    // Fallback: parse set-cookie header manually
+    const setCookie = response.headers.get('set-cookie');
+    if (setCookie) {
+      // Multiple cookies might be comma-separated (though technically incorrect)
+      // Each cookie's attributes are semicolon-separated
+      // We need to be careful: "expires=Thu, 01 Jan..." contains a comma
+      // Best effort: split on ", " followed by a word that looks like a cookie name
+      const parts = setCookie.split(/,\s*(?=[A-Za-z_][A-Za-z0-9_]*=)/);
+      for (const part of parts) {
+        const nameValue = part.split(';')[0].trim();
+        if (nameValue && nameValue.includes('=')) {
+          cookies.push(nameValue);
+        }
+      }
+    }
+  }
+
+  const cookieHeader = cookies.join('; ');
+  if (cookieHeader) {
+    console.log(`  [DEBUG] Cookies: ${cookieHeader.substring(0, 100)}...`);
+  }
+  return cookieHeader;
+}
+
+/**
  * Submit license via HTTP POST with cookie handling
  */
 async function submitLicense(baseUrl: string, license: string): Promise<boolean> {
@@ -216,7 +255,7 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
       signal: AbortSignal.timeout(10000),
     });
 
-    const cookies = getResponse.headers.get('set-cookie') || '';
+    const cookieHeader = parseCookies(getResponse);
     const html = await getResponse.text();
 
     // Extract CSRF token
@@ -224,6 +263,9 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
     const tokenMatch = html.match(/name="atl_token"\s+value="([^"]+)"/);
     if (tokenMatch) {
       atl_token = tokenMatch[1];
+      console.log(`  [DEBUG] CSRF token: ${atl_token.substring(0, 20)}...`);
+    } else {
+      console.log('  [DEBUG] No CSRF token found in form');
     }
 
     // Submit with cookies
@@ -233,20 +275,34 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
       formData.append('atl_token', atl_token);
     }
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    if (cookieHeader) {
+      headers['Cookie'] = cookieHeader;
+    }
+
+    console.log(`  [DEBUG] Submitting to: ${baseUrl}/secure/SetupLicense.jspa`);
     const response = await fetch(`${baseUrl}/secure/SetupLicense.jspa`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': cookies.split(',')[0] || '',
-      },
+      headers,
       body: formData.toString(),
-      redirect: 'follow',
+      redirect: 'manual', // Don't auto-follow redirects so we can see the response
       signal: AbortSignal.timeout(30000),
     });
+
+    console.log(`  [DEBUG] Response status: ${response.status}`);
+    console.log(`  [DEBUG] Response location: ${response.headers.get('location') || 'none'}`);
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ License submitted');
       return true;
+    }
+
+    // If 403, show more details
+    if (response.status === 403) {
+      const body = await response.text();
+      console.log(`  [DEBUG] 403 response body (first 500 chars): ${body.substring(0, 500)}`);
     }
 
     console.log(`  License submission returned: ${response.status}`);
@@ -282,7 +338,7 @@ async function completeSetup(baseUrl: string, username: string, password: string
         signal: AbortSignal.timeout(10000),
       });
 
-      const cookies = getResponse.headers.get('set-cookie') || '';
+      const cookieHeader = parseCookies(getResponse);
       const html = await getResponse.text();
 
       // Check if already past this step
@@ -307,14 +363,18 @@ async function completeSetup(baseUrl: string, username: string, password: string
         formData.append('atl_token', atl_token);
       }
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      if (cookieHeader) {
+        headers['Cookie'] = cookieHeader;
+      }
+
       const response = await fetch(`${baseUrl}${step.url}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Cookie': cookies.split(',')[0] || '',
-        },
+        headers,
         body: formData.toString(),
-        redirect: 'follow',
+        redirect: 'manual',
         signal: AbortSignal.timeout(30000),
       });
 
