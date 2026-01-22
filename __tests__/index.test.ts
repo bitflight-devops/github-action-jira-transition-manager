@@ -8,6 +8,176 @@ import { Action } from '../src/action';
 import * as fsHelper from '../src/fs-helper';
 import * as inputHelper from '../src/input-helper';
 
+// Fixture data for Jira API responses
+const mockIssue336 = {
+  id: '10336',
+  key: 'DVPS-336',
+  self: 'https://mock-jira.atlassian.net/rest/api/2/issue/10336',
+  fields: {
+    summary: 'Test issue 336',
+    status: {
+      id: '1',
+      name: 'To Do',
+      self: 'https://mock-jira.atlassian.net/rest/api/2/status/1',
+      statusCategory: {
+        id: 2,
+        key: 'new',
+        name: 'To Do',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/2',
+      },
+    },
+    project: {
+      id: '10000',
+      key: 'DVPS',
+      name: 'DevOps',
+      self: 'https://mock-jira.atlassian.net/rest/api/2/project/10000',
+    },
+  },
+};
+
+const mockIssue339 = {
+  id: '10339',
+  key: 'DVPS-339',
+  self: 'https://mock-jira.atlassian.net/rest/api/2/issue/10339',
+  fields: {
+    summary: 'Test issue 339',
+    status: {
+      id: '1',
+      name: 'To Do',
+      self: 'https://mock-jira.atlassian.net/rest/api/2/status/1',
+      statusCategory: {
+        id: 2,
+        key: 'new',
+        name: 'To Do',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/2',
+      },
+    },
+    project: {
+      id: '10000',
+      key: 'DVPS',
+      name: 'DevOps',
+      self: 'https://mock-jira.atlassian.net/rest/api/2/project/10000',
+    },
+  },
+};
+
+const mockTransitions = {
+  expand: 'transitions',
+  transitions: [
+    {
+      id: '11',
+      name: 'In Progress',
+      to: {
+        id: '3',
+        name: 'In Progress',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/status/3',
+        statusCategory: {
+          id: 4,
+          key: 'indeterminate',
+          name: 'In Progress',
+          self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/4',
+        },
+      },
+      hasScreen: false,
+      isGlobal: true,
+      isInitial: false,
+      isConditional: false,
+    },
+    {
+      id: '21',
+      name: 'Code Review',
+      to: {
+        id: '4',
+        name: 'Code Review',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/status/4',
+        statusCategory: {
+          id: 4,
+          key: 'indeterminate',
+          name: 'In Progress',
+          self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/4',
+        },
+      },
+      hasScreen: false,
+      isGlobal: true,
+      isInitial: false,
+      isConditional: false,
+    },
+    {
+      id: '31',
+      name: 'On Hold',
+      to: {
+        id: '5',
+        name: 'On Hold',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/status/5',
+        statusCategory: {
+          id: 4,
+          key: 'indeterminate',
+          name: 'In Progress',
+          self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/4',
+        },
+      },
+      hasScreen: false,
+      isGlobal: true,
+      isInitial: false,
+      isConditional: false,
+    },
+    {
+      id: '41',
+      name: 'Testing',
+      to: {
+        id: '6',
+        name: 'testing',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/status/6',
+        statusCategory: {
+          id: 4,
+          key: 'indeterminate',
+          name: 'In Progress',
+          self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/4',
+        },
+      },
+      hasScreen: false,
+      isGlobal: true,
+      isInitial: false,
+      isConditional: false,
+    },
+    {
+      id: '51',
+      name: 'Done',
+      to: {
+        id: '7',
+        name: 'done',
+        self: 'https://mock-jira.atlassian.net/rest/api/2/status/7',
+        statusCategory: {
+          id: 3,
+          key: 'done',
+          name: 'Done',
+          self: 'https://mock-jira.atlassian.net/rest/api/2/statuscategory/3',
+        },
+      },
+      hasScreen: false,
+      isGlobal: true,
+      isInitial: false,
+      isConditional: false,
+    },
+  ],
+};
+
+// Mock the Jira class to avoid HTTP requests entirely
+jest.mock('../src/Jira', () => {
+  return {
+    __esModule: true,
+    default: jest.fn().mockImplementation(() => ({
+      getIssue: jest.fn().mockImplementation((issueId: string) => {
+        if (issueId === 'DVPS-336') return Promise.resolve(mockIssue336);
+        if (issueId === 'DVPS-339') return Promise.resolve(mockIssue339);
+        return Promise.reject(new Error(`Unknown issue: ${issueId}`));
+      }),
+      getIssueTransitions: jest.fn().mockResolvedValue(mockTransitions),
+      transitionIssue: jest.fn().mockResolvedValue({}),
+    })),
+  };
+});
+
 const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
 const gitHubWorkspace = path.resolve('/checkout-tests/workspace');
 
@@ -57,7 +227,9 @@ projects:
           payload:
             state: 'APPROVED'
 `;
-const baseUrl = process.env.JIRA_BASE_URL as string;
+// Note: baseUrl is read from environment variable which is set in setup.ts
+// We need to read it lazily since setup.ts runs before tests but after module load
+const getBaseUrl = () => process.env.JIRA_BASE_URL as string;
 // Inputs for mock @actions/core
 let inputs = {} as any;
 // Shallow clone original @actions/github context
@@ -97,7 +269,7 @@ describe('jira ticket transition', () => {
     inputs.issues = issues;
 
     inputs.jira_transitions_yaml = jira_transitions_yaml;
-    inputs.jira_base_url = baseUrl;
+    inputs.jira_base_url = getBaseUrl();
   });
   afterAll(() => {
     // Restore GitHub workspace
@@ -120,7 +292,7 @@ describe('jira ticket transition', () => {
     expect(settings).toBeTruthy();
     expect(settings.issues).toEqual(issues);
     expect(settings.config).toBeTruthy();
-    expect(settings.config.baseUrl).toEqual(baseUrl);
+    expect(settings.config.baseUrl).toEqual(getBaseUrl());
   });
 
   it('get transitions', async () => {
