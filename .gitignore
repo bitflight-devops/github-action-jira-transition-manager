@@ -115,3 +115,6 @@ e2e/dist/
 e2e/snapshots/*.tar.gz
 e2e/snapshots/*.json
 !e2e/snapshots/.gitkeep
+
+# E2E backup files
+e2e/scripts/*-old.ts
