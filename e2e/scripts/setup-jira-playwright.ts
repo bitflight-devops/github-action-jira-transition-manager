@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 import { chromium } from 'playwright';
 
 const JIRA_URL = process.env.JIRA_URL || 'http://localhost:8080';
-const CONTAINER_NAME = 'jira-e2e-jira';
+const CONTAINER_NAME = process.env.JIRA_CONTAINER || 'jira-e2e';
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'admin';
 
@@ -52,19 +52,57 @@ function generateLicense(serverId: string): string {
 }
 
 /**
- * Watch Docker logs for a specific pattern
+ * Watch Docker logs for patterns indicating Jira is ready
  */
-function watchLogsFor(pattern: string, timeoutMs: number): boolean {
+function waitForJiraStart(timeoutMs: number): boolean {
   const startTime = Date.now();
-  const regex = new RegExp(pattern);
+  // Multiple patterns that indicate Jira is starting/ready
+  const readyPatterns = [
+    /Jira is ready to serve/i,
+    /You can now access JIRA/i,
+    /Server startup in/i,
+    /Catalina.*start/i,
+    /JiraStartupLogger.*JIRA.*started/i,
+  ];
+
+  let lastLogLine = '';
+  let iteration = 0;
 
   while (Date.now() - startTime < timeoutMs) {
-    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -100`);
-    if (regex.test(logs)) {
-      return true;
+    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -50`);
+
+    // Check all patterns
+    for (const pattern of readyPatterns) {
+      if (pattern.test(logs)) {
+        console.log(`  Found startup indicator: ${pattern.source}`);
+        return true;
+      }
     }
+
+    // Show progress every 30 seconds
+    iteration++;
+    if (iteration % 15 === 0) {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const logLines = logs.split('\n').filter((l) => l.trim());
+      const currentLog = logLines[logLines.length - 1] || '';
+      if (currentLog !== lastLogLine) {
+        console.log(`  [${elapsed}s] ${currentLog.substring(0, 100)}`);
+        lastLogLine = currentLog;
+      } else {
+        console.log(`  [${elapsed}s] Waiting...`);
+      }
+    }
+
     execSync('sleep 2');
   }
+
+  // On timeout, print recent logs
+  console.log('');
+  console.log('  === Recent Docker logs ===');
+  const recentLogs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -30`);
+  console.log(recentLogs);
+  console.log('  ===========================');
+
   return false;
 }
 
@@ -77,13 +115,14 @@ async function main() {
 
   // Step 1: Wait for Jira to start
   console.log('Step 1: Waiting for Jira to start...');
-  console.log('  Watching for: "Jira is ready to serve" (timeout: 180s)');
+  console.log(`  Container: ${CONTAINER_NAME}`);
+  console.log('  Timeout: 180s');
 
-  if (!watchLogsFor('Jira is ready to serve', 180000)) {
+  if (!waitForJiraStart(180000)) {
     console.log('  Timed out waiting for Jira to start');
     process.exit(1);
   }
-  console.log('  Found: "Jira is ready to serve"');
+  console.log('✓ Jira startup detected');
   console.log('');
 
   // Step 2: Launch browser
