@@ -268,7 +268,7 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
       console.log('  [DEBUG] No CSRF token found in form');
     }
 
-    // Submit with cookies
+    // Submit with cookies and browser-like headers
     const formData = new URLSearchParams();
     formData.append('setupLicenseKey', license);
     if (atl_token) {
@@ -277,6 +277,9 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Origin': baseUrl,
+      'Referer': `${baseUrl}/secure/SetupLicense!default.jspa`,
+      'X-Atlassian-Token': 'no-check', // Jira sometimes accepts this to bypass XSRF
     };
     if (cookieHeader) {
       headers['Cookie'] = cookieHeader;
@@ -287,7 +290,7 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
       method: 'POST',
       headers,
       body: formData.toString(),
-      redirect: 'manual', // Don't auto-follow redirects so we can see the response
+      redirect: 'manual',
       signal: AbortSignal.timeout(30000),
     });
 
@@ -365,6 +368,9 @@ async function completeSetup(baseUrl: string, username: string, password: string
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': baseUrl,
+        'Referer': `${baseUrl}${step.url.replace('.jspa', '!default.jspa')}`,
+        'X-Atlassian-Token': 'no-check',
       };
       if (cookieHeader) {
         headers['Cookie'] = cookieHeader;
@@ -394,8 +400,10 @@ async function completeSetup(baseUrl: string, username: string, password: string
  */
 async function verifyJiraReady(baseUrl: string, username: string, password: string): Promise<boolean> {
   const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+  let consecutive503 = 0;
+  const maxConsecutive503 = 3; // Fail fast after 3 consecutive 503s
 
-  for (let attempt = 1; attempt <= 20; attempt++) {
+  for (let attempt = 1; attempt <= 12; attempt++) {
     try {
       const response = await fetch(`${baseUrl}/rest/api/2/serverInfo`, {
         headers: { Authorization: authHeader },
@@ -408,9 +416,21 @@ async function verifyJiraReady(baseUrl: string, username: string, password: stri
         return true;
       }
 
-      console.log(`  Attempt ${attempt}/20: API returned ${response.status}`);
+      console.log(`  Attempt ${attempt}/12: API returned ${response.status}`);
+
+      // Track consecutive 503s and fail fast
+      if (response.status === 503) {
+        consecutive503++;
+        if (consecutive503 >= maxConsecutive503) {
+          console.log(`  ✗ Got ${maxConsecutive503} consecutive 503 errors - Jira setup likely incomplete`);
+          return false;
+        }
+      } else {
+        consecutive503 = 0;
+      }
     } catch (error) {
-      console.log(`  Attempt ${attempt}/20: ${(error as Error).message}`);
+      console.log(`  Attempt ${attempt}/12: ${(error as Error).message}`);
+      consecutive503 = 0;
     }
 
     await sleep(5000);
