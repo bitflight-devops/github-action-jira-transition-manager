@@ -2,6 +2,14 @@
 /**
  * Automate Jira Data Center setup wizard for haxqer/jira Docker image
  * This script handles the initial setup of Jira DC so it's ready for API access
+ *
+ * Wizard flow:
+ * 1. Setup mode selection (manual vs express)
+ * 2. Database configuration
+ * 3. License entry (with server ID)
+ * 4. Application properties
+ * 5. Admin account creation
+ * 6. Setup complete
  */
 import { execSync } from 'child_process';
 import { getE2EConfig } from './e2e-config';
@@ -12,121 +20,84 @@ async function sleep(ms: number): Promise<void> {
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => {
+    console.log(`  [DEBUG] Fetch timeout after ${timeoutMs}ms for ${url}`);
+    controller.abort();
+  }, timeoutMs);
   try {
+    console.log(`  [DEBUG] Fetching: ${url}`);
     const response = await fetch(url, { ...options, signal: controller.signal });
+    console.log(`  [DEBUG] Response: ${response.status} from ${url}`);
     return response;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-async function getServerIdFromSetupPage(baseUrl: string): Promise<string | null> {
-  try {
-    const response = await fetchWithTimeout(`${baseUrl}/secure/SetupLicense!default.jspa`);
-    const html = await response.text();
-
-    // Look for server ID in the page - it's typically shown in a form or data attribute
-    const serverIdMatch = html.match(/name="sid"\s+value="([^"]+)"/);
-    if (serverIdMatch) {
-      return serverIdMatch[1];
-    }
-
-    // Alternative pattern
-    const altMatch = html.match(/Server ID[:\s]*<[^>]*>([A-Z0-9-]+)</i);
-    if (altMatch) {
-      return altMatch[1];
-    }
-
-    // Try looking for data attribute
-    const dataMatch = html.match(/data-server-id="([^"]+)"/);
-    if (dataMatch) {
-      return dataMatch[1];
-    }
-
-    // Try the serverId input field
-    const inputMatch = html.match(/id="serverId"[^>]*value="([^"]+)"/);
-    if (inputMatch) {
-      return inputMatch[1];
-    }
-
-    console.log('Debug: Could not find server ID in HTML');
-    return null;
-  } catch (error) {
-    console.log(`Error fetching setup page: ${(error as Error).message}`);
-    return null;
-  }
+async function fetchHtml(url: string, options: RequestInit = {}): Promise<string> {
+  const response = await fetchWithTimeout(url, options, 30000);
+  return response.text();
 }
 
-function generateLicense(serverId: string): string | null {
+/**
+ * Step 1: Select manual setup mode
+ */
+async function selectSetupMode(baseUrl: string): Promise<boolean> {
+  console.log('Step 1: Selecting manual setup mode...');
   try {
-    // Run the atlassian-agent in the container to generate a license
-    const cmd = `docker exec jira-e2e java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n test@example.com -o TestOrg -s ${serverId}`;
-    console.log('Generating license...');
-    const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
+    // First, check the current setup state
+    const setupPage = await fetchHtml(`${baseUrl}/secure/SetupMode!default.jspa`);
 
-    // The license is output as a multi-line string
-    const lines = output.trim().split('\n');
-    // Find the license block - it's the base64-encoded content
-    const licenseLines: string[] = [];
-    let inLicense = false;
-
-    for (const line of lines) {
-      // License starts with AAAB or similar base64 prefix
-      if (line.match(/^[A-Za-z0-9+/=]{20,}$/)) {
-        inLicense = true;
-      }
-      if (inLicense) {
-        licenseLines.push(line);
-      }
+    // Check if we're already past setup mode
+    if (setupPage.includes('SetupDatabase') || setupPage.includes('SetupLicense')) {
+      console.log('✓ Already past setup mode selection');
+      return true;
     }
 
-    if (licenseLines.length > 0) {
-      return licenseLines.join('\n');
-    }
-
-    // If we couldn't parse it, return the whole output trimmed
-    console.log('License output:', output);
-    return output.trim();
-  } catch (error) {
-    console.error(`Failed to generate license: ${(error as Error).message}`);
-    return null;
-  }
-}
-
-async function submitLicense(baseUrl: string, license: string): Promise<boolean> {
-  try {
+    // Submit the setup mode form (classic mode = manual setup)
     const response = await fetchWithTimeout(
-      `${baseUrl}/secure/SetupLicense.jspa`,
+      `${baseUrl}/secure/SetupMode.jspa`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          setupLicenseKey: license,
-          licenseToSetup: license,
+          setupOption: 'classic',
         }).toString(),
+        redirect: 'follow',
       },
       30000,
     );
 
     if (response.ok || response.status === 302 || response.status === 303) {
-      console.log('✓ License submitted successfully');
+      console.log('✓ Setup mode selected (manual/classic)');
       return true;
     }
 
-    console.log(`License submission returned status: ${response.status}`);
-    return false;
+    console.log(`Setup mode selection returned status: ${response.status}`);
+    return true; // Continue anyway
   } catch (error) {
-    console.error(`Failed to submit license: ${(error as Error).message}`);
-    return false;
+    console.log(`Setup mode error: ${(error as Error).message}`);
+    return true; // Continue anyway, might already be configured
   }
 }
 
+/**
+ * Step 2: Configure database connection
+ */
 async function configureDatabase(baseUrl: string): Promise<boolean> {
-  // For haxqer/jira, configure MySQL database
+  console.log('Step 2: Configuring database connection...');
   try {
+    // Check current page
+    const dbPage = await fetchHtml(`${baseUrl}/secure/SetupDatabase!default.jspa`);
+
+    if (dbPage.includes('SetupLicense') || dbPage.includes('SetupApplicationProperties')) {
+      console.log('✓ Database already configured');
+      return true;
+    }
+
+    // Configure MySQL connection
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupDatabase.jspa`,
       {
@@ -142,26 +113,31 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
           jdbcDatabase: 'jira',
           jdbcUsername: 'root',
           jdbcPassword: '123456',
+          schemaName: 'public',
         }).toString(),
+        redirect: 'follow',
       },
-      60000, // Database setup can take time
+      60000, // 1 minute - database setup can take time
     );
 
     if (response.ok || response.status === 302 || response.status === 303) {
-      console.log('✓ Database configured');
+      console.log('✓ Database configuration submitted');
+      // Wait for database schema creation
+      console.log('  Waiting for database schema creation...');
+      await sleep(15000); // Reduced from 30s
       return true;
     }
 
-    console.log(`Database config returned status: ${response.status}`);
-    // Try alternative method - direct JDBC URL
-    return await configureDatabaseDirect(baseUrl);
+    // Try alternative with JDBC URL
+    console.log(`  First attempt returned ${response.status}, trying with JDBC URL...`);
+    return await configureDatabaseWithJdbcUrl(baseUrl);
   } catch (error) {
-    console.error(`Database config error: ${(error as Error).message}`);
-    return false;
+    console.log(`Database config error: ${(error as Error).message}`);
+    return await configureDatabaseWithJdbcUrl(baseUrl);
   }
 }
 
-async function configureDatabaseDirect(baseUrl: string): Promise<boolean> {
+async function configureDatabaseWithJdbcUrl(baseUrl: string): Promise<boolean> {
   try {
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupDatabase.jspa`,
@@ -178,18 +154,214 @@ async function configureDatabaseDirect(baseUrl: string): Promise<boolean> {
           jdbcUsername: 'root',
           jdbcPassword: '123456',
         }).toString(),
+        redirect: 'follow',
       },
-      60000,
+      60000, // 1 minute
     );
 
-    return response.ok || response.status === 302 || response.status === 303;
-  } catch {
+    if (response.ok || response.status === 302 || response.status === 303) {
+      console.log('✓ Database configuration submitted (JDBC URL method)');
+      console.log('  Waiting for database schema creation...');
+      await sleep(15000); // Reduced from 30s
+      return true;
+    }
+
+    console.log(`  JDBC URL method returned status: ${response.status}`);
+    return false;
+  } catch (error) {
+    console.log(`  JDBC URL method error: ${(error as Error).message}`);
     return false;
   }
 }
 
-async function configureAppProperties(baseUrl: string): Promise<boolean> {
+/**
+ * Step 3: Get server ID and submit license
+ */
+async function setupLicense(baseUrl: string): Promise<boolean> {
+  console.log('Step 3: Setting up license...');
+
+  // Get the license page to find server ID
+  let serverId: string | null = null;
+  let attempts = 0;
+  const maxAttempts = 10; // Reduced from 20
+
+  while (!serverId && attempts < maxAttempts) {
+    attempts++;
+    try {
+      const licensePage = await fetchHtml(`${baseUrl}/secure/SetupLicense!default.jspa`);
+
+      // Check if already licensed
+      if (licensePage.includes('SetupApplicationProperties') || licensePage.includes('SetupAdminAccount')) {
+        console.log('✓ License already configured');
+        return true;
+      }
+
+      // Try multiple patterns to find server ID
+      // Pattern 1: sid input field
+      let match = licensePage.match(/name="sid"\s+value="([^"]+)"/);
+      if (match) {
+        serverId = match[1];
+        break;
+      }
+
+      // Pattern 2: serverId input
+      match = licensePage.match(/id="serverId"[^>]*value="([^"]+)"/);
+      if (match) {
+        serverId = match[1];
+        break;
+      }
+
+      // Pattern 3: data attribute
+      match = licensePage.match(/data-server-id="([^"]+)"/);
+      if (match) {
+        serverId = match[1];
+        break;
+      }
+
+      // Pattern 4: Server ID label followed by value
+      match = licensePage.match(/Server\s*ID[:\s]*<[^>]*>?\s*([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/i);
+      if (match) {
+        serverId = match[1];
+        break;
+      }
+
+      // Pattern 5: Just find anything that looks like a server ID
+      match = licensePage.match(/([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
+      if (match) {
+        serverId = match[1];
+        break;
+      }
+
+      console.log(`  Attempt ${attempts}/${maxAttempts}: Waiting for server ID...`);
+      await sleep(5000);
+    } catch (error) {
+      console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
+      await sleep(5000);
+    }
+  }
+
+  if (!serverId) {
+    console.log('✗ Could not find server ID');
+    return false;
+  }
+
+  console.log(`  Found Server ID: ${serverId}`);
+
+  // Generate license using atlassian-agent
+  const license = generateLicense(serverId);
+  if (!license) {
+    console.log('✗ Failed to generate license');
+    return false;
+  }
+
+  console.log('  License generated successfully');
+
+  // Submit the license
+  return await submitLicense(baseUrl, license);
+}
+
+function generateLicense(serverId: string): string | null {
   try {
+    const cmd = `docker exec jira-e2e java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n test@example.com -o TestOrg -s ${serverId}`;
+    console.log('  Running atlassian-agent to generate license...');
+    const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
+
+    // Parse the license from output
+    const lines = output.trim().split('\n');
+    const licenseLines: string[] = [];
+    let inLicense = false;
+
+    for (const line of lines) {
+      // License starts with base64-like content
+      if (line.match(/^[A-Za-z0-9+/=]{20,}$/) || line.startsWith('AAAB')) {
+        inLicense = true;
+      }
+      if (inLicense && line.trim()) {
+        licenseLines.push(line);
+      }
+    }
+
+    if (licenseLines.length > 0) {
+      return licenseLines.join('\n');
+    }
+
+    // Return raw output if parsing failed
+    console.log('  Raw license output:', output.substring(0, 200));
+    return output.trim();
+  } catch (error) {
+    console.error(`  License generation failed: ${(error as Error).message}`);
+    return null;
+  }
+}
+
+async function submitLicense(baseUrl: string, license: string): Promise<boolean> {
+  try {
+    const response = await fetchWithTimeout(
+      `${baseUrl}/secure/SetupLicense.jspa`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          setupLicenseKey: license,
+        }).toString(),
+        redirect: 'follow',
+      },
+      60000,
+    );
+
+    if (response.ok || response.status === 302 || response.status === 303) {
+      console.log('✓ License submitted successfully');
+      await sleep(5000);
+      return true;
+    }
+
+    console.log(`  License submission returned status: ${response.status}`);
+    // Try alternative field name
+    const response2 = await fetchWithTimeout(
+      `${baseUrl}/secure/SetupLicense.jspa`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          licenseToSetup: license,
+          setupLicenseKey: license,
+        }).toString(),
+        redirect: 'follow',
+      },
+      60000,
+    );
+
+    if (response2.ok || response2.status === 302 || response2.status === 303) {
+      console.log('✓ License submitted (alternative method)');
+      await sleep(5000);
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error(`  License submission error: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Step 4: Configure application properties
+ */
+async function configureAppProperties(baseUrl: string): Promise<boolean> {
+  console.log('Step 4: Configuring application properties...');
+  try {
+    // Check if already past this step
+    const propsPage = await fetchHtml(`${baseUrl}/secure/SetupApplicationProperties!default.jspa`);
+
+    if (propsPage.includes('SetupAdminAccount') || propsPage.includes('SetupComplete')) {
+      console.log('✓ Application properties already configured');
+      return true;
+    }
+
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupApplicationProperties.jspa`,
       {
@@ -202,25 +374,39 @@ async function configureAppProperties(baseUrl: string): Promise<boolean> {
           mode: 'private',
           baseURL: baseUrl,
         }).toString(),
+        redirect: 'follow',
       },
       30000,
     );
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ Application properties configured');
+      await sleep(3000);
       return true;
     }
 
-    console.log(`App properties returned status: ${response.status}`);
-    return false;
+    console.log(`  App properties returned status: ${response.status}`);
+    return true; // Continue anyway
   } catch (error) {
-    console.error(`App properties error: ${(error as Error).message}`);
-    return false;
+    console.log(`  App properties error: ${(error as Error).message}`);
+    return true; // Continue anyway
   }
 }
 
+/**
+ * Step 5: Create admin account
+ */
 async function createAdminAccount(baseUrl: string, username: string, password: string): Promise<boolean> {
+  console.log('Step 5: Creating admin account...');
   try {
+    // Check if already past this step
+    const adminPage = await fetchHtml(`${baseUrl}/secure/SetupAdminAccount!default.jspa`);
+
+    if (adminPage.includes('SetupComplete') || adminPage.includes('Dashboard')) {
+      console.log('✓ Admin account already created');
+      return true;
+    }
+
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupAdminAccount.jspa`,
       {
@@ -235,21 +421,83 @@ async function createAdminAccount(baseUrl: string, username: string, password: s
           fullname: 'Admin User',
           email: 'admin@example.com',
         }).toString(),
+        redirect: 'follow',
       },
       30000,
     );
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ Admin account created');
+      await sleep(3000);
       return true;
     }
 
-    console.log(`Admin account creation returned status: ${response.status}`);
-    return false;
+    console.log(`  Admin account returned status: ${response.status}`);
+    return true; // Continue anyway
   } catch (error) {
-    console.error(`Admin account error: ${(error as Error).message}`);
-    return false;
+    console.log(`  Admin account error: ${(error as Error).message}`);
+    return true; // Continue anyway
   }
+}
+
+/**
+ * Step 6: Complete setup
+ */
+async function completeSetup(baseUrl: string): Promise<boolean> {
+  console.log('Step 6: Finalizing setup...');
+  try {
+    // Try to access setup complete page
+    const response = await fetchWithTimeout(`${baseUrl}/secure/SetupComplete.jspa`, {
+      method: 'POST',
+      redirect: 'follow',
+    });
+
+    if (response.ok || response.status === 302 || response.status === 303) {
+      console.log('✓ Setup complete submitted');
+    }
+  } catch {
+    // Ignore errors - setup might auto-complete
+  }
+
+  // Wait for Jira to finalize
+  console.log('  Waiting for Jira to finalize setup...');
+  await sleep(5000); // Reduced from 10s
+  return true;
+}
+
+/**
+ * Verify Jira is ready for API access
+ */
+async function verifyJiraReady(baseUrl: string, username: string, password: string): Promise<boolean> {
+  console.log('Verifying Jira is ready for API access...');
+
+  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+  const maxAttempts = 12; // ~1 minute with 5s intervals
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      const response = await fetchWithTimeout(`${baseUrl}/rest/api/2/serverInfo`, {
+        headers: { Authorization: authHeader },
+      });
+
+      if (response.ok) {
+        const serverInfo = (await response.json()) as { version: string; baseUrl: string };
+        console.log(`✓ Jira is ready! Version: ${serverInfo.version}`);
+        return true;
+      }
+
+      console.log(`  Attempt ${attempts}/${maxAttempts}: API returned ${response.status}`);
+    } catch (error) {
+      console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
+    }
+
+    await sleep(5000);
+  }
+
+  console.log('✗ Jira did not become ready in time');
+  return false;
 }
 
 async function setupJira(): Promise<void> {
@@ -258,13 +506,16 @@ async function setupJira(): Promise<void> {
   const username = config.jira.auth.username || 'admin';
   const password = config.jira.auth.password || 'admin';
 
-  console.log('Starting Jira setup wizard automation (haxqer/jira image)...');
+  console.log('='.repeat(60));
+  console.log('Jira Setup Wizard Automation (haxqer/jira)');
+  console.log('='.repeat(60));
   console.log(`Base URL: ${baseUrl}`);
+  console.log('');
 
-  // Wait for Jira to be HTTP accessible
+  // Wait for Jira HTTP to be available
   console.log('Waiting for Jira HTTP to be available...');
   let httpReady = false;
-  const httpTimeout = 300000; // 5 minutes
+  const httpTimeout = 120000; // 2 minutes
   const httpStart = Date.now();
 
   while (!httpReady && Date.now() - httpStart < httpTimeout) {
@@ -276,7 +527,7 @@ async function setupJira(): Promise<void> {
       }
     } catch (error) {
       const elapsed = Math.round((Date.now() - httpStart) / 1000);
-      console.log(`⏳ Waiting for HTTP... (${elapsed}s) - ${(error as Error).message}`);
+      console.log(`  Waiting... (${elapsed}s) - ${(error as Error).message}`);
       await sleep(5000);
     }
   }
@@ -286,7 +537,8 @@ async function setupJira(): Promise<void> {
     process.exit(1);
   }
 
-  // Check if Jira is already set up
+  // Check if Jira is already fully configured
+  console.log('');
   console.log('Checking if Jira is already configured...');
   try {
     const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
@@ -301,107 +553,74 @@ async function setupJira(): Promise<void> {
       return;
     }
   } catch {
-    console.log('Jira needs to be set up');
+    console.log('Jira needs to be set up - proceeding with wizard automation');
   }
+
+  console.log('');
 
   // Give Jira a moment to fully initialize the setup wizard
-  console.log('Waiting for setup wizard to initialize...');
-  await sleep(10000);
-
-  // Step 1: Get server ID from setup page
-  console.log('Getting server ID from setup page...');
-  let serverId: string | null = null;
-  let attempts = 0;
-  const maxAttempts = 10;
-
-  while (!serverId && attempts < maxAttempts) {
-    serverId = await getServerIdFromSetupPage(baseUrl);
-    if (!serverId) {
-      attempts++;
-      console.log(`Attempt ${attempts}/${maxAttempts} - waiting for server ID...`);
-      await sleep(5000);
-    }
-  }
-
-  if (!serverId) {
-    console.log('⚠ Could not get server ID - Jira may already be past the license page');
-    // Try to continue with other setup steps
-  } else {
-    console.log(`✓ Server ID: ${serverId}`);
-
-    // Step 2: Generate license using atlassian-agent
-    const license = generateLicense(serverId);
-    if (license) {
-      console.log('✓ License generated');
-
-      // Step 3: Submit license
-      await submitLicense(baseUrl, license);
-      await sleep(5000);
-    } else {
-      console.log('⚠ Failed to generate license');
-    }
-  }
-
-  // Step 4: Configure database
-  console.log('Configuring database connection...');
-  await configureDatabase(baseUrl);
-  await sleep(10000); // Database setup takes time
-
-  // Step 5: Set application properties
-  console.log('Configuring application properties...');
-  await configureAppProperties(baseUrl);
-  await sleep(3000);
-
-  // Step 6: Create admin account
-  console.log('Creating admin account...');
-  await createAdminAccount(baseUrl, username, password);
   await sleep(5000);
 
-  console.log('Setup wizard automation complete');
-  console.log('Waiting for Jira to finalize...');
-  await sleep(30000); // Give Jira time to complete setup
+  // Run setup steps in order
+  await selectSetupMode(baseUrl);
+  console.log('');
+
+  const dbConfigured = await configureDatabase(baseUrl);
+  if (!dbConfigured) {
+    console.log('⚠ Database configuration may have issues, continuing...');
+  }
+  console.log('');
+
+  const licenseConfigured = await setupLicense(baseUrl);
+  if (!licenseConfigured) {
+    console.log('⚠ License configuration may have issues, continuing...');
+  }
+  console.log('');
+
+  await configureAppProperties(baseUrl);
+  console.log('');
+
+  await createAdminAccount(baseUrl, username, password);
+  console.log('');
+
+  await completeSetup(baseUrl);
+  console.log('');
 
   // Final verification
-  console.log('Verifying Jira is ready...');
-  let verified = false;
-  const verifyStart = Date.now();
-  const verifyTimeout = 120000; // 2 minutes
+  const ready = await verifyJiraReady(baseUrl, username, password);
+  console.log('');
 
-  while (!verified && Date.now() - verifyStart < verifyTimeout) {
-    try {
-      const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-      const response = await fetchWithTimeout(`${baseUrl}/rest/api/2/serverInfo`, {
-        headers: { Authorization: authHeader },
-      });
-
-      if (response.ok) {
-        const serverInfo = (await response.json()) as { version: string };
-        console.log(`✓ Jira is ready! Version: ${serverInfo.version}`);
-        verified = true;
-      } else {
-        const elapsed = Math.round((Date.now() - verifyStart) / 1000);
-        console.log(`⏳ Waiting for API (${elapsed}s) - status: ${response.status}`);
-        await sleep(5000);
-      }
-    } catch (error) {
-      const elapsed = Math.round((Date.now() - verifyStart) / 1000);
-      console.log(`⏳ Waiting for API (${elapsed}s) - ${(error as Error).message}`);
-      await sleep(5000);
-    }
-  }
-
-  if (!verified) {
-    console.log('⚠ Could not verify Jira readiness');
-    console.log('Note: Manual setup may still be required. Access Jira at', baseUrl);
+  if (ready) {
+    console.log('='.repeat(60));
+    console.log('✓ Jira setup completed successfully!');
+    console.log('='.repeat(60));
+  } else {
+    console.log('='.repeat(60));
+    console.log('⚠ Jira setup may require manual intervention');
+    console.log(`   Access Jira at: ${baseUrl}`);
+    console.log('='.repeat(60));
+    process.exit(1);
   }
 }
 
 // Run if called directly
 if (require.main === module) {
-  setupJira().catch((error) => {
-    console.error('Failed to set up Jira:', error);
+  // Add global timeout to prevent hanging forever
+  const GLOBAL_TIMEOUT = 300000; // 5 minutes max
+  const timeoutId = setTimeout(() => {
+    console.error('✗ Setup timed out after 5 minutes');
     process.exit(1);
-  });
+  }, GLOBAL_TIMEOUT);
+
+  setupJira()
+    .then(() => {
+      clearTimeout(timeoutId);
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      console.error('Failed to set up Jira:', error);
+      process.exit(1);
+    });
 }
 
 export { setupJira };
