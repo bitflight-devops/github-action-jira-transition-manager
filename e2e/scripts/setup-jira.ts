@@ -11,11 +11,120 @@
  * 5. Admin account creation
  * 6. Setup complete
  */
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { getE2EConfig } from './e2e-config';
+
+const CONTAINER_NAME = 'jira-e2e';
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface LogWatchResult {
+  success: boolean;
+  matchedPattern?: string;
+  isError?: boolean;
+}
+
+/**
+ * Watch Docker logs for success OR failure patterns
+ * Returns as soon as either is matched
+ */
+async function watchDockerLogs(
+  containerName: string,
+  successPatterns: string[],
+  errorPatterns: string[],
+  timeoutMs: number,
+): Promise<LogWatchResult> {
+  return new Promise((resolve) => {
+    const patterns = [
+      ...successPatterns.map((p) => ({ pattern: p, isError: false })),
+      ...errorPatterns.map((p) => ({ pattern: p, isError: true })),
+    ];
+
+    console.log(`  Watching Docker logs for:`);
+    console.log(`    Success: ${successPatterns.join(', ')}`);
+    if (errorPatterns.length > 0) {
+      console.log(`    Errors: ${errorPatterns.join(', ')}`);
+    }
+
+    const timeoutId = setTimeout(() => {
+      console.log(`  ⏱ Docker log watch timed out after ${timeoutMs / 1000}s`);
+      dockerLogs.kill();
+      resolve({ success: false });
+    }, timeoutMs);
+
+    const dockerLogs = spawn('docker', ['logs', '-f', '--since', '1s', containerName], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let resolved = false;
+    const checkLine = (line: string) => {
+      if (resolved) return;
+
+      for (const { pattern, isError } of patterns) {
+        if (line.includes(pattern)) {
+          resolved = true;
+          console.log(`  ${isError ? '✗' : '✓'} Matched: "${pattern}"`);
+          clearTimeout(timeoutId);
+          dockerLogs.kill();
+          resolve({ success: !isError, matchedPattern: pattern, isError });
+          return;
+        }
+      }
+    };
+
+    dockerLogs.stdout?.on('data', (data: Buffer) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) checkLine(line);
+      }
+    });
+
+    dockerLogs.stderr?.on('data', (data: Buffer) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) checkLine(line);
+      }
+    });
+
+    dockerLogs.on('error', (err) => {
+      if (!resolved) {
+        console.log(`  Docker logs error: ${err.message}`);
+        clearTimeout(timeoutId);
+        resolve({ success: false });
+      }
+    });
+
+    dockerLogs.on('close', () => {
+      if (!resolved) {
+        clearTimeout(timeoutId);
+        resolve({ success: false });
+      }
+    });
+  });
+}
+
+/**
+ * Simple version: wait for a single message
+ */
+async function waitForDockerLogMessage(containerName: string, message: string, timeoutMs: number): Promise<boolean> {
+  const result = await watchDockerLogs(containerName, [message], [], timeoutMs);
+  return result.success;
+}
+
+/**
+ * Get recent Docker logs to check current state
+ */
+function getDockerLogs(containerName: string, lines = 50): string {
+  try {
+    return execSync(`docker logs --tail ${lines} ${containerName} 2>&1`, {
+      encoding: 'utf-8',
+      timeout: 10000,
+    });
+  } catch {
+    return '';
+  }
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
@@ -88,6 +197,14 @@ async function selectSetupMode(baseUrl: string): Promise<boolean> {
  */
 async function configureDatabase(baseUrl: string): Promise<boolean> {
   console.log('Step 2: Configuring database connection...');
+
+  // Check if database is already configured via logs
+  const recentLogs = getDockerLogs(CONTAINER_NAME, 50);
+  if (recentLogs.includes('Database is already configured') || recentLogs.includes('Database Connection - OK')) {
+    console.log('✓ Database already configured (detected from logs)');
+    return true;
+  }
+
   try {
     // Check current page
     const dbPage = await fetchHtml(`${baseUrl}/secure/SetupDatabase!default.jspa`);
@@ -97,7 +214,16 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
       return true;
     }
 
+    // Start watching logs BEFORE submitting the form
+    const logWatchPromise = watchDockerLogs(
+      CONTAINER_NAME,
+      ['Database Connection - OK', 'Database setup completed', 'SetupLicense'],
+      ['Database Connection - FAILED', 'Cannot connect to database', 'Connection refused'],
+      120000, // 2 minutes for DB schema creation
+    );
+
     // Configure MySQL connection
+    console.log('  Submitting database configuration...');
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupDatabase.jspa`,
       {
@@ -117,14 +243,16 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
         }).toString(),
         redirect: 'follow',
       },
-      60000, // 1 minute - database setup can take time
+      30000,
     );
 
     if (response.ok || response.status === 302 || response.status === 303) {
-      console.log('✓ Database configuration submitted');
-      // Wait for database schema creation
-      console.log('  Waiting for database schema creation...');
-      await sleep(15000); // Reduced from 30s
+      console.log('✓ Database configuration submitted, waiting for schema creation...');
+      const result = await logWatchPromise;
+      if (result.isError) {
+        console.log('✗ Database setup failed');
+        return false;
+      }
       return true;
     }
 
@@ -139,6 +267,14 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
 
 async function configureDatabaseWithJdbcUrl(baseUrl: string): Promise<boolean> {
   try {
+    // Start watching logs
+    const logWatchPromise = watchDockerLogs(
+      CONTAINER_NAME,
+      ['Database Connection - OK', 'Database setup completed'],
+      ['Database Connection - FAILED', 'Cannot connect to database'],
+      120000,
+    );
+
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupDatabase.jspa`,
       {
@@ -156,14 +292,14 @@ async function configureDatabaseWithJdbcUrl(baseUrl: string): Promise<boolean> {
         }).toString(),
         redirect: 'follow',
       },
-      60000, // 1 minute
+      30000,
     );
 
     if (response.ok || response.status === 302 || response.status === 303) {
       console.log('✓ Database configuration submitted (JDBC URL method)');
-      console.log('  Waiting for database schema creation...');
-      await sleep(15000); // Reduced from 30s
-      return true;
+      console.log('  Waiting for schema creation...');
+      const result = await logWatchPromise;
+      return !result.isError;
     }
 
     console.log(`  JDBC URL method returned status: ${response.status}`);
@@ -512,10 +648,27 @@ async function setupJira(): Promise<void> {
   console.log(`Base URL: ${baseUrl}`);
   console.log('');
 
-  // Wait for Jira HTTP to be available
+  // Check Docker logs to see current Jira state
+  console.log('Checking Jira container status via Docker logs...');
+  const recentLogs = getDockerLogs(CONTAINER_NAME, 100);
+
+  if (recentLogs.includes('Jira is ready to serve')) {
+    console.log('✓ Jira container reports ready to serve');
+  } else if (recentLogs.includes('Starting the JIRA Plugin System')) {
+    console.log('  Jira is starting up, waiting for ready state...');
+    const ready = await waitForDockerLogMessage(CONTAINER_NAME, 'Jira is ready to serve', 120000);
+    if (!ready) {
+      console.log('⚠ Did not see ready message in logs, continuing anyway...');
+    }
+  } else {
+    console.log('  Jira container starting, waiting...');
+    await waitForDockerLogMessage(CONTAINER_NAME, 'Jira is ready to serve', 180000);
+  }
+
+  // Now wait for HTTP to be available
   console.log('Waiting for Jira HTTP to be available...');
   let httpReady = false;
-  const httpTimeout = 120000; // 2 minutes
+  const httpTimeout = 60000; // 1 minute (reduced since we know container is ready)
   const httpStart = Date.now();
 
   while (!httpReady && Date.now() - httpStart < httpTimeout) {
@@ -528,12 +681,15 @@ async function setupJira(): Promise<void> {
     } catch (error) {
       const elapsed = Math.round((Date.now() - httpStart) / 1000);
       console.log(`  Waiting... (${elapsed}s) - ${(error as Error).message}`);
-      await sleep(5000);
+      await sleep(3000);
     }
   }
 
   if (!httpReady) {
     console.error('✗ Jira HTTP did not become available in time');
+    // Show recent logs for debugging
+    console.log('Recent Docker logs:');
+    console.log(getDockerLogs(CONTAINER_NAME, 30));
     process.exit(1);
   }
 
