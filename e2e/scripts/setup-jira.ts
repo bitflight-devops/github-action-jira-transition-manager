@@ -556,12 +556,26 @@ async function setupJira(): Promise<void> {
 
   console.log('');
   console.log('Step 8: Submitting license...');
-  await submitLicense(baseUrl, license);
+  const licenseSubmitted = await submitLicense(baseUrl, license);
+  if (!licenseSubmitted) {
+    console.log(`✗ License submission failed for ${baseUrl}`);
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
+    process.exit(1);
+  }
 
   // Step 9: Complete remaining setup
   console.log('');
   console.log('Step 9: Completing setup...');
-  await completeSetup(baseUrl, username, password);
+  const setupCompleted = await completeSetup(baseUrl, username, password);
+  if (!setupCompleted) {
+    console.log(`✗ Setup completion failed for ${baseUrl} (user: ${username})`);
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
+    process.exit(1);
+  }
 
   // Step 10: Final verification
   console.log('');
