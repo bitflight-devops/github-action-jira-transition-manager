@@ -171,12 +171,17 @@ function extractCsrfToken(html: string): string | null {
 }
 
 /**
- * Extract form action URL from HTML
+ * Extract form action URL from HTML and normalize it
  */
 function extractFormAction(html: string, defaultAction: string): string {
   const match = html.match(/<form[^>]*action="([^"]+)"/);
   if (match) {
-    return match[1];
+    let action = match[1];
+    // Ensure the action starts with / if it's a relative path
+    if (!action.startsWith('http') && !action.startsWith('/')) {
+      action = '/' + action;
+    }
+    return action;
   }
   return defaultAction;
 }
