@@ -18,12 +18,24 @@ import { getE2EConfig } from './e2e-config';
 
 const CONTAINER_NAME = 'jira-e2e';
 
-const FETCH_TIMEOUT = 30000;
-const DOCKER_LOGS_TIMEOUT = 10000;
-const HTTP_HEALTH_CHECK_TIMEOUT = 5000; // Short timeout for health checks
+// Timeout constants (in milliseconds)
+const FETCH_TIMEOUT = 30000; // 30 seconds - default HTTP request timeout
+const DOCKER_LOGS_TIMEOUT = 10000; // 10 seconds - timeout for Docker logs fetch
+const HTTP_HEALTH_CHECK_TIMEOUT = 5000; // 5 seconds - short timeout for health checks
+const LICENSE_GENERATION_TIMEOUT = 30000; // 30 seconds - timeout for license generation
+const DATABASE_INIT_TIMEOUT = 240000; // 4 minutes - timeout for database initialization
+const HTTP_READY_TIMEOUT = 60000; // 1 minute - timeout for HTTP to become available
+const GLOBAL_SETUP_TIMEOUT = 420000; // 7 minutes - global timeout for entire setup
+
+// Sleep interval constants (in milliseconds)
 const SLEEP_INTERVAL_SHORT = 3000; // 3 seconds - for quick retries
 const SLEEP_INTERVAL_MEDIUM = 5000; // 5 seconds - for standard polling
 const SLEEP_INTERVAL_LONG = 10000; // 10 seconds - for slow operations
+
+// Retry attempt constants
+const DATABASE_INIT_MAX_ATTEMPTS = 20; // Max attempts for database initialization checks
+const LICENSE_MAX_ATTEMPTS = 10; // Max attempts to find server ID for license
+const VERIFY_MAX_ATTEMPTS = 12; // Max attempts to verify Jira API is ready
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -176,7 +188,7 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
       'Synchrony initialization completed',
     ],
     ['Database connection failed', 'Could not connect to database'],
-    240000, // 4 minutes
+    DATABASE_INIT_TIMEOUT,
   );
 
   if (!result.success) {
@@ -185,9 +197,8 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
 
   // Also try to access the setup wizard to confirm
   let attempts = 0;
-  const maxAttempts = 20;
 
-  while (attempts < maxAttempts) {
+  while (attempts < DATABASE_INIT_MAX_ATTEMPTS) {
     attempts++;
     try {
       const response = await fetchWithTimeout(`${baseUrl}/secure/SetupLicense!default.jspa`, {}, DOCKER_LOGS_TIMEOUT);
@@ -198,7 +209,7 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
       }
 
       if (response.status === 404) {
-        console.log(`  Attempt ${attempts}/${maxAttempts}: Waiting for database init...`);
+        console.log(`  Attempt ${attempts}/${DATABASE_INIT_MAX_ATTEMPTS}: Waiting for database init...`);
         await sleep(SLEEP_INTERVAL_LONG);
         continue;
       }
@@ -209,7 +220,7 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
         return true;
       }
     } catch (error) {
-      console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
+      console.log(`  Attempt ${attempts}/${DATABASE_INIT_MAX_ATTEMPTS}: ${(error as Error).message}`);
       await sleep(SLEEP_INTERVAL_LONG);
     }
   }
@@ -233,7 +244,7 @@ function generateLicense(serverId: string): string | null {
     // Use array-based command to prevent command injection
     const output = execSync(
       `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n test@example.com -o TestOrg -s "${serverId}"`,
-      { encoding: 'utf-8', timeout: 30000, shell: '/bin/sh' }
+      { encoding: 'utf-8', timeout: LICENSE_GENERATION_TIMEOUT, shell: '/bin/sh' }
     );
 
     // Parse the license from output
@@ -267,9 +278,8 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
   let serverId: string | null = null;
   let csrfToken: string | null = null;
   let attempts = 0;
-  const maxAttempts = 10;
 
-  while (!serverId && attempts < maxAttempts) {
+  while (!serverId && attempts < LICENSE_MAX_ATTEMPTS) {
     attempts++;
     try {
       const licensePage = await fetchHtml(`${baseUrl}/secure/SetupLicense!default.jspa`);
@@ -300,10 +310,10 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
 
       if (serverId) break;
 
-      console.log(`  Attempt ${attempts}/${maxAttempts}: Waiting for server ID...`);
+      console.log(`  Attempt ${attempts}/${LICENSE_MAX_ATTEMPTS}: Waiting for server ID...`);
       await sleep(SLEEP_INTERVAL_MEDIUM);
     } catch (error) {
-      console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
+      console.log(`  Attempt ${attempts}/${LICENSE_MAX_ATTEMPTS}: ${(error as Error).message}`);
       await sleep(SLEEP_INTERVAL_MEDIUM);
     }
   }
@@ -443,10 +453,9 @@ async function verifyJiraReady(baseUrl: string, username: string, password: stri
   console.log('Verifying Jira API access...');
 
   const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-  const maxAttempts = 12;
   let attempts = 0;
 
-  while (attempts < maxAttempts) {
+  while (attempts < VERIFY_MAX_ATTEMPTS) {
     attempts++;
     try {
       const response = await fetchWithTimeout(`${baseUrl}/rest/api/2/serverInfo`, {
@@ -459,9 +468,9 @@ async function verifyJiraReady(baseUrl: string, username: string, password: stri
         return true;
       }
 
-      console.log(`  Attempt ${attempts}/${maxAttempts}: API returned ${response.status}`);
+      console.log(`  Attempt ${attempts}/${VERIFY_MAX_ATTEMPTS}: API returned ${response.status}`);
     } catch (error) {
-      console.log(`  Attempt ${attempts}/${maxAttempts}: ${(error as Error).message}`);
+      console.log(`  Attempt ${attempts}/${VERIFY_MAX_ATTEMPTS}: ${(error as Error).message}`);
     }
 
     await sleep(SLEEP_INTERVAL_MEDIUM);
@@ -515,9 +524,8 @@ async function setupJira(): Promise<void> {
   console.log('Waiting for HTTP to be available...');
   let httpReady = false;
   const httpStart = Date.now();
-  const httpTimeout = 60000;
 
-  while (!httpReady && Date.now() - httpStart < httpTimeout) {
+  while (!httpReady && Date.now() - httpStart < HTTP_READY_TIMEOUT) {
     try {
       await fetchWithTimeout(`${baseUrl}/status`, {}, HTTP_HEALTH_CHECK_TIMEOUT);
       httpReady = true;

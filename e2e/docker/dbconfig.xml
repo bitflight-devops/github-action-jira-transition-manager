@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WARNING: This file contains hardcoded database credentials for E2E testing only.
+  DO NOT use these credentials in production environments.
+  These are test-only credentials specifically for local Docker-based E2E tests.
+-->
 <jira-database-config>
   <name>defaultDS</name>
   <delegator-name>default</delegator-name>
