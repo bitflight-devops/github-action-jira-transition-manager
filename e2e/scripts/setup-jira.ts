@@ -149,12 +149,45 @@ async function fetchHtml(url: string, options: RequestInit = {}): Promise<string
 }
 
 /**
+ * Extract CSRF token (atl_token) from HTML form
+ */
+function extractCsrfToken(html: string): string | null {
+  // Try multiple patterns for CSRF token
+  const patterns = [
+    /name="atl_token"\s+value="([^"]+)"/,
+    /name="atlassian-token"\s+value="([^"]+)"/,
+    /data-atl-token="([^"]+)"/,
+    /"atl_token":"([^"]+)"/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match) {
+      console.log(`  [DEBUG] Found CSRF token: ${match[1].substring(0, 20)}...`);
+      return match[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract form action URL from HTML
+ */
+function extractFormAction(html: string, defaultAction: string): string {
+  const match = html.match(/<form[^>]*action="([^"]+)"/);
+  if (match) {
+    return match[1];
+  }
+  return defaultAction;
+}
+
+/**
  * Step 1: Select manual setup mode
  */
 async function selectSetupMode(baseUrl: string): Promise<boolean> {
   console.log('Step 1: Selecting manual setup mode...');
   try {
-    // First, check the current setup state
+    // First, check the current setup state and get CSRF token
     const setupPage = await fetchHtml(`${baseUrl}/secure/SetupMode!default.jspa`);
 
     // Check if we're already past setup mode
@@ -163,17 +196,27 @@ async function selectSetupMode(baseUrl: string): Promise<boolean> {
       return true;
     }
 
+    // Extract CSRF token
+    const csrfToken = extractCsrfToken(setupPage);
+    const formAction = extractFormAction(setupPage, `${baseUrl}/secure/SetupMode.jspa`);
+
+    // Build form data
+    const formData: Record<string, string> = {
+      setupOption: 'classic',
+    };
+    if (csrfToken) {
+      formData.atl_token = csrfToken;
+    }
+
     // Submit the setup mode form (classic mode = manual setup)
     const response = await fetchWithTimeout(
-      `${baseUrl}/secure/SetupMode.jspa`,
+      formAction.startsWith('http') ? formAction : `${baseUrl}${formAction}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          setupOption: 'classic',
-        }).toString(),
+        body: new URLSearchParams(formData).toString(),
         redirect: 'follow',
       },
       30000,
@@ -206,13 +249,17 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
   }
 
   try {
-    // Check current page
+    // Check current page and get CSRF token
     const dbPage = await fetchHtml(`${baseUrl}/secure/SetupDatabase!default.jspa`);
 
     if (dbPage.includes('SetupLicense') || dbPage.includes('SetupApplicationProperties')) {
       console.log('✓ Database already configured');
       return true;
     }
+
+    // Extract CSRF token
+    const csrfToken = extractCsrfToken(dbPage);
+    const formAction = extractFormAction(dbPage, '/secure/SetupDatabase.jspa');
 
     // Start watching logs BEFORE submitting the form
     const logWatchPromise = watchDockerLogs(
@@ -224,23 +271,28 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
 
     // Configure MySQL connection
     console.log('  Submitting database configuration...');
+    const formData: Record<string, string> = {
+      databaseOption: 'external',
+      databaseType: 'mysql8',
+      jdbcHostname: 'mysql',
+      jdbcPort: '3306',
+      jdbcDatabase: 'jira',
+      jdbcUsername: 'root',
+      jdbcPassword: '123456',
+      schemaName: 'public',
+    };
+    if (csrfToken) {
+      formData.atl_token = csrfToken;
+    }
+
     const response = await fetchWithTimeout(
-      `${baseUrl}/secure/SetupDatabase.jspa`,
+      formAction.startsWith('http') ? formAction : `${baseUrl}${formAction}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          databaseOption: 'external',
-          databaseType: 'mysql8',
-          jdbcHostname: 'mysql',
-          jdbcPort: '3306',
-          jdbcDatabase: 'jira',
-          jdbcUsername: 'root',
-          jdbcPassword: '123456',
-          schemaName: 'public',
-        }).toString(),
+        body: new URLSearchParams(formData).toString(),
         redirect: 'follow',
       },
       30000,
@@ -258,14 +310,14 @@ async function configureDatabase(baseUrl: string): Promise<boolean> {
 
     // Try alternative with JDBC URL
     console.log(`  First attempt returned ${response.status}, trying with JDBC URL...`);
-    return await configureDatabaseWithJdbcUrl(baseUrl);
+    return await configureDatabaseWithJdbcUrl(baseUrl, csrfToken);
   } catch (error) {
     console.log(`Database config error: ${(error as Error).message}`);
-    return await configureDatabaseWithJdbcUrl(baseUrl);
+    return await configureDatabaseWithJdbcUrl(baseUrl, null);
   }
 }
 
-async function configureDatabaseWithJdbcUrl(baseUrl: string): Promise<boolean> {
+async function configureDatabaseWithJdbcUrl(baseUrl: string, csrfToken: string | null): Promise<boolean> {
   try {
     // Start watching logs
     const logWatchPromise = watchDockerLogs(
@@ -275,6 +327,18 @@ async function configureDatabaseWithJdbcUrl(baseUrl: string): Promise<boolean> {
       120000,
     );
 
+    const formData: Record<string, string> = {
+      databaseOption: 'external',
+      databaseType: 'mysql8',
+      jdbcString:
+        'jdbc:mysql://mysql:3306/jira?useUnicode=true&characterEncoding=UTF8&sessionVariables=default_storage_engine=InnoDB',
+      jdbcUsername: 'root',
+      jdbcPassword: '123456',
+    };
+    if (csrfToken) {
+      formData.atl_token = csrfToken;
+    }
+
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupDatabase.jspa`,
       {
@@ -282,14 +346,7 @@ async function configureDatabaseWithJdbcUrl(baseUrl: string): Promise<boolean> {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          databaseOption: 'external',
-          databaseType: 'mysql8',
-          jdbcString:
-            'jdbc:mysql://mysql:3306/jira?useUnicode=true&characterEncoding=UTF8&sessionVariables=default_storage_engine=InnoDB',
-          jdbcUsername: 'root',
-          jdbcPassword: '123456',
-        }).toString(),
+        body: new URLSearchParams(formData).toString(),
         redirect: 'follow',
       },
       30000,
@@ -318,8 +375,9 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
 
   // Get the license page to find server ID
   let serverId: string | null = null;
+  let csrfToken: string | null = null;
   let attempts = 0;
-  const maxAttempts = 10; // Reduced from 20
+  const maxAttempts = 10;
 
   while (!serverId && attempts < maxAttempts) {
     attempts++;
@@ -331,6 +389,9 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
         console.log('✓ License already configured');
         return true;
       }
+
+      // Extract CSRF token
+      csrfToken = extractCsrfToken(licensePage);
 
       // Try multiple patterns to find server ID
       // Pattern 1: sid input field
@@ -393,7 +454,7 @@ async function setupLicense(baseUrl: string): Promise<boolean> {
   console.log('  License generated successfully');
 
   // Submit the license
-  return await submitLicense(baseUrl, license);
+  return await submitLicense(baseUrl, license, csrfToken);
 }
 
 function generateLicense(serverId: string): string | null {
@@ -430,8 +491,15 @@ function generateLicense(serverId: string): string | null {
   }
 }
 
-async function submitLicense(baseUrl: string, license: string): Promise<boolean> {
+async function submitLicense(baseUrl: string, license: string, csrfToken: string | null): Promise<boolean> {
   try {
+    const formData: Record<string, string> = {
+      setupLicenseKey: license,
+    };
+    if (csrfToken) {
+      formData.atl_token = csrfToken;
+    }
+
     const response = await fetchWithTimeout(
       `${baseUrl}/secure/SetupLicense.jspa`,
       {
@@ -439,9 +507,7 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          setupLicenseKey: license,
-        }).toString(),
+        body: new URLSearchParams(formData).toString(),
         redirect: 'follow',
       },
       60000,
@@ -454,29 +520,6 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
     }
 
     console.log(`  License submission returned status: ${response.status}`);
-    // Try alternative field name
-    const response2 = await fetchWithTimeout(
-      `${baseUrl}/secure/SetupLicense.jspa`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          licenseToSetup: license,
-          setupLicenseKey: license,
-        }).toString(),
-        redirect: 'follow',
-      },
-      60000,
-    );
-
-    if (response2.ok || response2.status === 302 || response2.status === 303) {
-      console.log('✓ License submitted (alternative method)');
-      await sleep(5000);
-      return true;
-    }
-
     return false;
   } catch (error) {
     console.error(`  License submission error: ${(error as Error).message}`);
@@ -490,12 +533,22 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
 async function configureAppProperties(baseUrl: string): Promise<boolean> {
   console.log('Step 4: Configuring application properties...');
   try {
-    // Check if already past this step
+    // Check if already past this step and get CSRF token
     const propsPage = await fetchHtml(`${baseUrl}/secure/SetupApplicationProperties!default.jspa`);
 
     if (propsPage.includes('SetupAdminAccount') || propsPage.includes('SetupComplete')) {
       console.log('✓ Application properties already configured');
       return true;
+    }
+
+    const csrfToken = extractCsrfToken(propsPage);
+    const formData: Record<string, string> = {
+      title: 'Jira E2E Test',
+      mode: 'private',
+      baseURL: baseUrl,
+    };
+    if (csrfToken) {
+      formData.atl_token = csrfToken;
     }
 
     const response = await fetchWithTimeout(
@@ -505,11 +558,7 @@ async function configureAppProperties(baseUrl: string): Promise<boolean> {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          title: 'Jira E2E Test',
-          mode: 'private',
-          baseURL: baseUrl,
-        }).toString(),
+        body: new URLSearchParams(formData).toString(),
         redirect: 'follow',
       },
       30000,
@@ -535,12 +584,24 @@ async function configureAppProperties(baseUrl: string): Promise<boolean> {
 async function createAdminAccount(baseUrl: string, username: string, password: string): Promise<boolean> {
   console.log('Step 5: Creating admin account...');
   try {
-    // Check if already past this step
+    // Check if already past this step and get CSRF token
     const adminPage = await fetchHtml(`${baseUrl}/secure/SetupAdminAccount!default.jspa`);
 
     if (adminPage.includes('SetupComplete') || adminPage.includes('Dashboard')) {
       console.log('✓ Admin account already created');
       return true;
+    }
+
+    const csrfToken = extractCsrfToken(adminPage);
+    const formData: Record<string, string> = {
+      username: username,
+      password: password,
+      confirm: password,
+      fullname: 'Admin User',
+      email: 'admin@example.com',
+    };
+    if (csrfToken) {
+      formData.atl_token = csrfToken;
     }
 
     const response = await fetchWithTimeout(
@@ -550,13 +611,7 @@ async function createAdminAccount(baseUrl: string, username: string, password: s
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          username: username,
-          password: password,
-          confirm: password,
-          fullname: 'Admin User',
-          email: 'admin@example.com',
-        }).toString(),
+        body: new URLSearchParams(formData).toString(),
         redirect: 'follow',
       },
       30000,
