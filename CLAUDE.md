@@ -79,13 +79,22 @@ Tried to automate the Jira setup wizard via HTTP form submissions:
 - **Attempted fixes**: Extract CSRF tokens, pass cookies manually
 - **Result**: Still got 403 errors
 
-### Current Approach: Pre-mounted Config (In Testing)
+### Current Approach: Database + Pre-mounted Config (In Testing)
 
 Instead of web form automation:
 
 1. Mount `dbconfig.xml` directly into container via Docker Compose
 2. Jira reads config on startup, skips database wizard step
-3. Only need HTTP for license submission and admin setup
+3. Generate license via `atlassian-agent.jar`
+4. **Insert license directly into MySQL `productlicense` table** (bypasses XSRF)
+5. Restart Jira to pick up the license
+6. Complete admin setup via HTTP (with non-browser User-Agent)
+
+#### Why Database Insertion?
+
+The `X-Atlassian-Token: no-check` header only bypasses XSRF for REST API calls,
+NOT for web form submissions. The setup wizard uses web forms with strict XSRF
+protection that cannot be bypassed via HTTP alone without a real browser.
 
 ## Configuration Files
 

@@ -246,9 +246,71 @@ function parseCookies(response: Response): string {
 }
 
 /**
- * Submit license via HTTP POST with cookie handling
+ * Insert license directly into the database (bypasses XSRF issues)
  */
-async function submitLicense(baseUrl: string, license: string): Promise<boolean> {
+function insertLicenseViaDatabase(license: string): boolean {
+  try {
+    // Escape single quotes in the license string for SQL
+    const escapedLicense = license.replace(/'/g, "''");
+
+    // First check if the productlicense table exists
+    const tableExists = execQuiet(
+      `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='jira' AND table_name='productlicense'" 2>/dev/null`,
+    );
+
+    if (!tableExists.trim() || tableExists.trim() === '0') {
+      console.log('  productlicense table does not exist yet');
+      console.log('  Jira schema may not be initialized - checking tables...');
+      const tables = execQuiet(
+        `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='jira'" 2>/dev/null`,
+      );
+      console.log(`  Tables in jira database: ${tables.trim() || '0'}`);
+      return false;
+    }
+
+    // Check if the table has any entries
+    const checkResult = execQuiet(
+      `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM jira.productlicense" 2>/dev/null`,
+    );
+    const existingCount = parseInt(checkResult.trim(), 10);
+
+    if (existingCount > 0) {
+      // Update existing license
+      console.log('  Updating existing license in database...');
+      exec(
+        `docker exec jira-e2e-mysql mysql -uroot -p123456 -e "UPDATE jira.productlicense SET LICENSE='${escapedLicense}' WHERE ID=(SELECT MIN(ID) FROM (SELECT ID FROM jira.productlicense) AS t)" 2>/dev/null`,
+      );
+    } else {
+      // Insert new license
+      console.log('  Inserting license into database...');
+      exec(
+        `docker exec jira-e2e-mysql mysql -uroot -p123456 -e "INSERT INTO jira.productlicense (ID, LICENSE) VALUES (10000, '${escapedLicense}')" 2>/dev/null`,
+      );
+    }
+
+    // Verify the license was inserted
+    const verifyResult = execQuiet(
+      `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM jira.productlicense WHERE LICENSE IS NOT NULL" 2>/dev/null`,
+    );
+    const verifiedCount = parseInt(verifyResult.trim(), 10);
+
+    if (verifiedCount > 0) {
+      console.log('✓ License inserted into database');
+      return true;
+    }
+
+    console.log('  ✗ License verification failed');
+    return false;
+  } catch (error) {
+    console.log(`  Database license insertion error: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Submit license via HTTP POST with cookie handling (fallback method)
+ */
+async function submitLicenseViaHttp(baseUrl: string, license: string): Promise<boolean> {
   // Get the license page to extract any tokens and cookies
   try {
     const getResponse = await fetch(`${baseUrl}/secure/SetupLicense!default.jspa`, {
@@ -268,7 +330,7 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
       console.log('  [DEBUG] No CSRF token found in form');
     }
 
-    // Submit with cookies and browser-like headers
+    // Submit with cookies - use non-browser User-Agent
     const formData = new URLSearchParams();
     formData.append('setupLicenseKey', license);
     if (atl_token) {
@@ -277,9 +339,8 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Origin': baseUrl,
-      'Referer': `${baseUrl}/secure/SetupLicense!default.jspa`,
-      'X-Atlassian-Token': 'no-check', // Jira sometimes accepts this to bypass XSRF
+      'User-Agent': 'curl/7.88.1', // Non-browser User-Agent
+      'X-Atlassian-Token': 'no-check',
     };
     if (cookieHeader) {
       headers['Cookie'] = cookieHeader;
@@ -298,7 +359,7 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
     console.log(`  [DEBUG] Response location: ${response.headers.get('location') || 'none'}`);
 
     if (response.ok || response.status === 302 || response.status === 303) {
-      console.log('✓ License submitted');
+      console.log('✓ License submitted via HTTP');
       return true;
     }
 
@@ -312,6 +373,39 @@ async function submitLicense(baseUrl: string, license: string): Promise<boolean>
     return response.status < 500;
   } catch (error) {
     console.log(`  License submission error: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Submit license - tries database first, then falls back to HTTP
+ * Returns { success: boolean, usedDatabase: boolean }
+ */
+async function submitLicense(baseUrl: string, license: string): Promise<{ success: boolean; usedDatabase: boolean }> {
+  // Try database insertion first (more reliable, avoids XSRF issues)
+  console.log('  Trying database insertion method...');
+  if (insertLicenseViaDatabase(license)) {
+    return { success: true, usedDatabase: true };
+  }
+
+  // Fall back to HTTP method
+  console.log('  Database method failed, trying HTTP submission...');
+  const httpSuccess = await submitLicenseViaHttp(baseUrl, license);
+  return { success: httpSuccess, usedDatabase: false };
+}
+
+/**
+ * Restart the Jira container to pick up database changes
+ */
+async function restartJiraContainer(): Promise<boolean> {
+  try {
+    console.log('  Restarting Jira container...');
+    exec(`docker restart ${CONTAINER_NAME}`, 60000);
+    console.log('  Waiting for Jira to restart...');
+    await sleep(10000); // Give it time to start the shutdown/startup cycle
+    return true;
+  } catch (error) {
+    console.log(`  Restart failed: ${(error as Error).message}`);
     return false;
   }
 }
@@ -338,6 +432,7 @@ async function completeSetup(baseUrl: string, username: string, password: string
     try {
       // Get page for cookies/tokens
       const getResponse = await fetch(`${baseUrl}${step.url.replace('.jspa', '!default.jspa')}`, {
+        headers: { 'User-Agent': 'curl/7.88.1' },
         signal: AbortSignal.timeout(10000),
       });
 
@@ -357,7 +452,7 @@ async function completeSetup(baseUrl: string, username: string, password: string
         atl_token = tokenMatch[1];
       }
 
-      // Submit
+      // Submit with non-browser User-Agent
       const formData = new URLSearchParams();
       for (const [key, value] of Object.entries(step.data)) {
         formData.append(key, value);
@@ -368,8 +463,7 @@ async function completeSetup(baseUrl: string, username: string, password: string
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': baseUrl,
-        'Referer': `${baseUrl}${step.url.replace('.jspa', '!default.jspa')}`,
+        'User-Agent': 'curl/7.88.1', // Non-browser User-Agent to bypass XSRF checks
         'X-Atlassian-Token': 'no-check',
       };
       if (cookieHeader) {
@@ -385,6 +479,12 @@ async function completeSetup(baseUrl: string, username: string, password: string
       });
 
       console.log(`  ${step.name}: ${response.status}`);
+
+      // If 403, log details
+      if (response.status === 403) {
+        const body = await response.text();
+        console.log(`  [DEBUG] ${step.name} 403 body: ${body.substring(0, 300)}`);
+      }
     } catch (error) {
       console.log(`  ${step.name}: ${(error as Error).message}`);
     }
@@ -556,13 +656,32 @@ async function setupJira(): Promise<void> {
 
   console.log('');
   console.log('Step 8: Submitting license...');
-  const licenseSubmitted = await submitLicense(baseUrl, license);
-  if (!licenseSubmitted) {
+  const licenseResult = await submitLicense(baseUrl, license);
+  if (!licenseResult.success) {
     console.log(`✗ License submission failed for ${baseUrl}`);
     console.log('');
     console.log('=== Recent Docker Logs ===');
     console.log(getDockerLogs(50));
     process.exit(1);
+  }
+
+  // If we used database insertion, restart Jira to pick up the license
+  if (licenseResult.usedDatabase) {
+    console.log('');
+    console.log('Step 8b: Restarting Jira to apply license from database...');
+    await restartJiraContainer();
+
+    // Wait for Jira to come back up
+    console.log('  Waiting for Jira to restart...');
+    const httpReadyAfterRestart = await waitForHttp(baseUrl, 180000);
+    if (!httpReadyAfterRestart) {
+      console.log('✗ Jira did not come back up after restart');
+      console.log('');
+      console.log('=== Recent Docker Logs ===');
+      console.log(getDockerLogs(50));
+      process.exit(1);
+    }
+    console.log('✓ Jira is back up');
   }
 
   // Step 9: Complete remaining setup
