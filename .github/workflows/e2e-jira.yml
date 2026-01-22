@@ -112,13 +112,39 @@ jobs:
           yarn e2e:snapshot:save
           echo "Snapshot saved successfully"
 
-      - name: Collect Docker logs on failure
+      - name: Collect and display Docker logs on failure
         if: failure()
         run: |
           mkdir -p e2e/artifacts
-          yarn e2e:logs > e2e/artifacts/docker-logs.txt 2>&1 || true
-          docker ps -a > e2e/artifacts/containers.txt 2>&1 || true
-          docker stats --no-stream > e2e/artifacts/stats.txt 2>&1 || true
+
+          echo "=========================================="
+          echo "=== DOCKER CONTAINER STATUS ==="
+          echo "=========================================="
+          docker ps -a | tee e2e/artifacts/containers.txt
+
+          echo ""
+          echo "=========================================="
+          echo "=== DOCKER STATS ==="
+          echo "=========================================="
+          docker stats --no-stream 2>&1 | tee e2e/artifacts/stats.txt || true
+
+          echo ""
+          echo "=========================================="
+          echo "=== JIRA CONTAINER LOGS (last 200 lines) ==="
+          echo "=========================================="
+          docker logs --tail 200 jira-e2e 2>&1 | tee e2e/artifacts/jira-logs.txt || true
+
+          echo ""
+          echo "=========================================="
+          echo "=== MYSQL CONTAINER LOGS (last 100 lines) ==="
+          echo "=========================================="
+          docker logs --tail 100 jira-e2e-mysql 2>&1 | tee e2e/artifacts/mysql-logs.txt || true
+
+          echo ""
+          echo "=========================================="
+          echo "=== FULL DOCKER COMPOSE LOGS ==="
+          echo "=========================================="
+          yarn e2e:logs 2>&1 | tee e2e/artifacts/docker-logs.txt || true
 
       - name: Upload E2E artifacts on failure
         if: failure()
