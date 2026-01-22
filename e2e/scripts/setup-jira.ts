@@ -850,9 +850,11 @@ async function setupJira(): Promise<void> {
     console.log('='.repeat(60));
   } else {
     console.log('='.repeat(60));
-    console.log('⚠ Jira setup may require manual intervention');
-    console.log(`   Access Jira at: ${baseUrl}`);
+    console.log('✗ Jira setup failed');
     console.log('='.repeat(60));
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(CONTAINER_NAME, 50));
     process.exit(1);
   }
 }
