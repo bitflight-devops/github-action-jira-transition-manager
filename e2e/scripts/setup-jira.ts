@@ -224,8 +224,8 @@ async function waitForDatabaseInit(baseUrl: string): Promise<boolean> {
 function generateLicense(serverId: string): string | null {
   try {
     // Sanitize serverId to prevent command injection
-    // Server ID should only contain alphanumeric characters and hyphens
-    if (!/^[A-Za-z0-9-]+$/.test(serverId)) {
+    // Jira server IDs follow format: XXXX-XXXX-XXXX-XXXX (4 groups of 4 alphanumeric chars)
+    if (!/^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(serverId)) {
       console.error(`  Invalid server ID format: ${serverId}`);
       return null;
     }
