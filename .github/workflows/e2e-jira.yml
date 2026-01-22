@@ -2,9 +2,7 @@ name: E2E Tests - Jira
 
 on:
   pull_request:
-    branches:
-      - main
-      - develop
+    # Run on all PRs to validate changes work in any context
   workflow_dispatch:
     inputs:
       skip_cache:
