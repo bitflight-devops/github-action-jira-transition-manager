@@ -24,7 +24,7 @@ The Jira client is mocked using `vi.mock('../src/Jira')` to avoid real API calls
 
 ### E2E Tests
 
-**Status: Not yet working - setup wizard automation failing**
+**Status: In progress - testing pre-mounted config approach**
 
 E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image.
 
@@ -32,7 +32,21 @@ E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image
 
 - Config: `e2e/docker/compose.yml`
 - Image: `haxqer/jira:9.17.5` with MySQL 8.0
+- Database config: `e2e/docker/jira-dbconfig.xml` (pre-mounted)
 - The haxqer image includes `atlassian-agent.jar` for license generation
+
+#### How It Works
+
+1. **Database config is pre-mounted** via Docker Compose volume mount
+   - `jira-dbconfig.xml` → `/var/jira/dbconfig.xml`
+   - Jira reads this on startup and connects to MySQL automatically
+   - No need to submit web forms for database setup
+
+2. **setup-jira.ts handles the rest**:
+   - Waits for Jira to start and initialize database schema
+   - Gets server ID from license page
+   - Generates license via `atlassian-agent.jar`
+   - Submits license and completes admin setup
 
 #### E2E Scripts
 
@@ -40,7 +54,7 @@ Located in `e2e/scripts/`:
 
 | Script             | Purpose                                   |
 | ------------------ | ----------------------------------------- |
-| `setup-jira.ts`    | Automates the Jira setup wizard           |
+| `setup-jira.ts`    | Completes Jira setup (license, admin)     |
 | `wait-for-jira.ts` | Waits for Jira API to be ready            |
 | `seed-jira.ts`     | Creates test project and issues           |
 | `snapshot-*.ts`    | Save/restore Docker volumes for faster CI |
@@ -56,49 +70,22 @@ The workflow has two paths:
 
 ## What Has Been Tried (E2E Setup)
 
-### Problem: Jira Setup Wizard Automation
+### Previous Approach: Web Form Automation (Failed)
 
-The `setup-jira.ts` script attempts to automate the Jira DC setup wizard by:
+Tried to automate the Jira setup wizard via HTTP form submissions:
 
-1. Selecting manual setup mode
-2. Configuring MySQL database connection
-3. Generating and submitting license via `atlassian-agent.jar`
-4. Setting application properties
-5. Creating admin account
+- **Problem**: 403 Forbidden errors due to CSRF token/session issues
+- **Cause**: Node's `fetch` doesn't maintain cookies across requests
+- **Attempted fixes**: Extract CSRF tokens, pass cookies manually
+- **Result**: Still got 403 errors
 
-### Issues Encountered
+### Current Approach: Pre-mounted Config (In Testing)
 
-1. **403 Forbidden on form submissions**
-   - Jira requires CSRF tokens (`atl_token`) for all POST requests
-   - Added token extraction from HTML forms
-   - Still getting 403 - may need cookie/session handling
+Instead of web form automation:
 
-2. **URL path parsing**
-   - Form actions were missing leading `/` (e.g., `SetupMode.jspa` instead of `/SetupMode.jspa`)
-   - Fixed with `extractFormAction()` normalization
-
-3. **Setup wizard flow**
-   - The wizard returns 404 for later steps if earlier steps haven't completed
-   - Database must be configured before license page is available
-
-### Current Debug Output
-
-The script now logs:
-
-- All form fields found in HTML
-- CSRF tokens extracted
-- Hidden input fields
-- HTTP response status codes
-
-### What's Needed to Progress
-
-1. **Session/Cookie handling**: The 403 errors may require maintaining a session cookie across requests. Node's `fetch` doesn't automatically handle cookies.
-
-2. **Verify form field names**: Need to capture the actual HTML from the setup pages to see exact field names Jira expects. The debug logging should help with this.
-
-3. **Alternative approach**: Consider using Puppeteer/Playwright for browser automation instead of raw HTTP requests, as this would handle cookies, JavaScript, and redirects automatically.
-
-4. **Pre-configured image**: Another option is to create a pre-configured Jira Docker image with setup already completed, avoiding the wizard entirely.
+1. Mount `dbconfig.xml` directly into container via Docker Compose
+2. Jira reads config on startup, skips database wizard step
+3. Only need HTTP for license submission and admin setup
 
 ## Configuration Files
 
