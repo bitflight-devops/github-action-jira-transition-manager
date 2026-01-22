@@ -24,7 +24,7 @@ The Jira client is mocked using `vi.mock('../src/Jira')` to avoid real API calls
 
 ### E2E Tests
 
-**Status: In progress - testing pre-mounted config approach**
+**Status: In progress - testing Playwright browser automation**
 
 E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image.
 
@@ -42,22 +42,23 @@ E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image
    - Jira reads this on startup and connects to MySQL automatically
    - No need to submit web forms for database setup
 
-2. **setup-jira.ts handles the rest**:
-   - Waits for Jira to start and initialize database schema
-   - Gets server ID from license page
-   - Generates license via `atlassian-agent.jar`
-   - Submits license and completes admin setup
+2. **Playwright browser automation** (`setup-jira-playwright.ts`):
+   - Waits for Jira startup (monitors Docker logs for ready indicators)
+   - Launches headless Chromium browser
+   - Navigates through setup wizard (license, admin account)
+   - Handles XSRF automatically (real browser session)
 
 #### E2E Scripts
 
 Located in `e2e/scripts/`:
 
-| Script             | Purpose                                   |
-| ------------------ | ----------------------------------------- |
-| `setup-jira.ts`    | Completes Jira setup (license, admin)     |
-| `wait-for-jira.ts` | Waits for Jira API to be ready            |
-| `seed-jira.ts`     | Creates test project and issues           |
-| `snapshot-*.ts`    | Save/restore Docker volumes for faster CI |
+| Script                     | Purpose                                      |
+| -------------------------- | -------------------------------------------- |
+| `setup-jira-playwright.ts` | Browser-based setup (primary, handles XSRF)  |
+| `setup-jira.ts`            | HTTP-based setup (fallback, has XSRF issues) |
+| `wait-for-jira.ts`         | Waits for Jira API to be ready               |
+| `seed-jira.ts`             | Creates test project and issues              |
+| `snapshot-*.ts`            | Save/restore Docker volumes for faster CI    |
 
 #### CI Workflow
 
@@ -66,35 +67,45 @@ File: `.github/workflows/e2e-jira.yml`
 The workflow has two paths:
 
 1. **Fast path**: Restore from cached Docker volume snapshots
-2. **Slow path**: Full Jira setup from scratch
+2. **Slow path**: Full Jira setup from scratch (uses Playwright)
 
 ## What Has Been Tried (E2E Setup)
 
-### Previous Approach: Web Form Automation (Failed)
+### Approach 1: HTTP Form Automation (Failed)
 
 Tried to automate the Jira setup wizard via HTTP form submissions:
 
 - **Problem**: 403 Forbidden errors due to CSRF token/session issues
-- **Cause**: Node's `fetch` doesn't maintain cookies across requests
-- **Attempted fixes**: Extract CSRF tokens, pass cookies manually
-- **Result**: Still got 403 errors
+- **Cause**: `X-Atlassian-Token: no-check` only works for REST APIs, not web forms
+- **Attempted fixes**: Extract CSRF tokens, pass cookies manually, non-browser User-Agent
+- **Result**: Still got 403 errors - web forms have strict XSRF protection
 
-### Current Approach: Database + Pre-mounted Config (In Testing)
+### Approach 2: Database License Insertion (Partial Success)
 
-Instead of web form automation:
+Bypassed web forms by inserting license directly into MySQL:
 
 1. Mount `dbconfig.xml` directly into container via Docker Compose
-2. Jira reads config on startup, skips database wizard step
-3. Generate license via `atlassian-agent.jar`
-4. **Insert license directly into MySQL `productlicense` table** (bypasses XSRF)
-5. Restart Jira to pick up the license
-6. Complete admin setup via HTTP (with non-browser User-Agent)
+2. Insert license into `productlicense` table
+3. Restart Jira to pick up the license
 
-#### Why Database Insertion?
+- **Result**: License insertion worked, but still needed browser for admin setup
 
-The `X-Atlassian-Token: no-check` header only bypasses XSRF for REST API calls,
-NOT for web form submissions. The setup wizard uses web forms with strict XSRF
-protection that cannot be bypassed via HTTP alone without a real browser.
+### Current Approach: Playwright Browser Automation (In Testing)
+
+Uses headless Chromium to automate the setup wizard:
+
+1. Mount `dbconfig.xml` for database config (skips DB wizard step)
+2. Wait for Jira startup (monitor Docker logs for ready patterns)
+3. Launch Playwright with headless Chromium
+4. Navigate through setup wizard pages (license, admin account)
+5. XSRF handled automatically by real browser session
+
+#### Why Playwright?
+
+- Real browser handles cookies, sessions, and XSRF tokens automatically
+- More reliable than HTTP-based form submission
+- Can take screenshots on failure for debugging
+- Works with Jira's strict XSRF protection
 
 ## Configuration Files
 
@@ -124,13 +135,14 @@ yarn test
 yarn test:watch
 
 # E2E (local)
-yarn e2e:up    # Start containers
-yarn e2e:setup # Run setup wizard automation
-yarn e2e:wait  # Wait for Jira API
-yarn e2e:seed  # Create test data
-yarn e2e:test  # Run E2E tests
-yarn e2e:down  # Stop containers
-yarn e2e:logs  # View Docker logs
+yarn e2e:up         # Start containers
+yarn e2e:setup      # Run Playwright setup (primary)
+yarn e2e:setup:http # Run HTTP-based setup (fallback)
+yarn e2e:wait       # Wait for Jira API
+yarn e2e:seed       # Create test data
+yarn e2e:test       # Run E2E tests
+yarn e2e:down       # Stop containers
+yarn e2e:logs       # View Docker logs
 
 # Build
 yarn build     # Build action + E2E scripts
