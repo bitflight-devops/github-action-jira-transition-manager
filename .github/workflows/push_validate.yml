@@ -1,5 +1,8 @@
 name: Validate Functions - Test Transition Issue
-on: push
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   test-transition-issue:
