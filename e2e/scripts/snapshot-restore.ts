@@ -24,7 +24,8 @@ import * as readline from 'readline';
 interface SnapshotMetadata {
   createdAt: string;
   jiraVersion: string;
-  postgresVersion: string;
+  mysqlVersion?: string;
+  postgresVersion?: string; // Legacy field for backwards compatibility
   volumes: {
     name: string;
     file: string;

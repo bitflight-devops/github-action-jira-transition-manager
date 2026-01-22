@@ -29,7 +29,7 @@ const defaultConfig: SnapshotConfig = {
   outputDir: path.join(__dirname, '..', 'snapshots'),
   volumes: [
     { name: 'jira-data', file: 'jira-data-snapshot.tar.gz' },
-    { name: 'postgres-data', file: 'postgres-data-snapshot.tar.gz' },
+    { name: 'mysql-data', file: 'mysql-data-snapshot.tar.gz' },
   ],
   composeProject: 'docker', // Docker Compose project name (from directory name)
 };
@@ -116,13 +116,13 @@ function saveVolume(volumeName: string, outputPath: string): boolean {
 function createMetadata(config: SnapshotConfig): void {
   const metadata = {
     createdAt: new Date().toISOString(),
-    jiraVersion: '10.5.0',
-    postgresVersion: '18.1-alpine',
+    jiraVersion: '9.17.5',
+    mysqlVersion: '8.0',
     volumes: config.volumes.map((v) => ({
       name: v.name,
       file: v.file,
     })),
-    notes: 'Pre-configured Jira DC with E2E project, admin/admin credentials',
+    notes: 'Pre-configured Jira DC (haxqer image) with E2E project, admin/admin credentials',
   };
 
   const metadataPath = path.join(config.outputDir, 'snapshot-metadata.json');

@@ -18,7 +18,8 @@ import * as path from 'path';
 interface SnapshotMetadata {
   createdAt: string;
   jiraVersion: string;
-  postgresVersion: string;
+  mysqlVersion?: string;
+  postgresVersion?: string; // Legacy field for backwards compatibility
   volumes: {
     name: string;
     file: string;
@@ -116,7 +117,10 @@ async function main(): Promise<void> {
       console.log(`\nSnapshot Info:`);
       console.log(`  Created: ${formatAge(result.ageHours)} (${result.metadata.createdAt})`);
       console.log(`  Jira Version: ${result.metadata.jiraVersion}`);
-      console.log(`  PostgreSQL: ${result.metadata.postgresVersion}`);
+      const dbVersion = result.metadata.mysqlVersion
+        ? `MySQL: ${result.metadata.mysqlVersion}`
+        : `PostgreSQL: ${result.metadata.postgresVersion}`;
+      console.log(`  ${dbVersion}`);
       console.log(`  Total Size: ${result.totalSizeMB.toFixed(2)} MB`);
 
       if (result.metadata.notes) {
