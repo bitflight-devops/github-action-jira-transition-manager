@@ -27,8 +27,7 @@ async function sleep(ms: number): Promise<void> {
  * (30 seconds of identical errors) to avoid wasting CI time.
  *
  * @returns A promise that resolves when Jira is ready
- * @throws Exits process with code 1 if Jira returns 503, times out (2 minutes),
- *         or the same error occurs repeatedly
+ * @throws Exits process with code 1 if times out (2 minutes) or the same error occurs repeatedly
  */
 async function waitForJira(): Promise<void> {
   const config = getE2EConfig();
@@ -56,11 +55,6 @@ async function waitForJira(): Promise<void> {
       });
 
       clearTimeout(timeoutId);
-
-      if (response.status === 503) {
-        console.error('✗ Jira returned 503');
-        process.exit(1);
-      }
 
       if (!response.ok) {
         throw new Error(`HTTP status: ${response.status}`);
