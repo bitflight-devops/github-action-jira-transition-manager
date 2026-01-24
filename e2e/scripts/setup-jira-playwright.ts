@@ -165,25 +165,54 @@ async function main() {
   const page = await context.newPage();
 
   try {
-    // Step 3: Wait for Jira web UI
+    // Step 3: Wait for Jira web UI to finish initializing
     console.log('Step 3: Waiting for Jira web UI...');
     let attempts = 0;
     while (attempts < 60) {
       try {
         await page.goto(JIRA_URL, { timeout: 10000 });
         const title = await page.title();
-        if (title.includes('Setup') || title.includes('Jira') || (await page.locator('#jira').count()) > 0) {
+        console.log(`  [${attempts}] Page title: ${title}`);
+
+        // Wait for initialization to complete (not just "Initialising")
+        if (title.includes('Initialising') || title.includes('Loading')) {
+          console.log('  Still initializing, waiting...');
+          attempts++;
+          await page.waitForTimeout(5000);
+          continue;
+        }
+
+        // Check for setup wizard or dashboard
+        if (
+          title.includes('Setup') ||
+          title.includes('Set up') ||
+          title.includes('Dashboard') ||
+          title.includes('Log in')
+        ) {
           console.log(`  Jira UI ready (title: ${title})`);
           break;
         }
-      } catch {
-        // Connection refused, keep waiting
+
+        // Also check page content for setup indicators
+        const pageContent = await page.content();
+        if (
+          pageContent.includes('SetupLicense') ||
+          pageContent.includes('setupLicenseKey') ||
+          pageContent.includes('Server ID')
+        ) {
+          console.log('  Found setup page content');
+          break;
+        }
+      } catch (e) {
+        console.log(`  [${attempts}] Connection error: ${(e as Error).message}`);
       }
       attempts++;
       await page.waitForTimeout(3000);
     }
 
     if (attempts >= 60) {
+      await page.screenshot({ path: '/tmp/jira-timeout.png' });
+      console.log('  Screenshot saved to /tmp/jira-timeout.png');
       throw new Error('Jira web UI did not become available');
     }
     console.log('');
@@ -210,11 +239,27 @@ async function main() {
     console.log('Step 5: Handling License page...');
     await page.waitForTimeout(2000);
 
-    // Check if we're on the license page
-    const licenseTextarea = page.locator('textarea[name="licenseKey"], textarea[name="setupLicenseKey"]');
+    // Log current page info for debugging
+    const currentUrl = page.url();
+    const currentTitle = await page.title();
+    console.log(`  Current URL: ${currentUrl}`);
+    console.log(`  Current title: ${currentTitle}`);
+
+    // Check if we're on the license page - try multiple selectors
+    const licenseTextarea = page.locator(
+      'textarea[name="licenseKey"], textarea[name="setupLicenseKey"], #setupLicenseKey',
+    );
     const hasLicensePage = (await licenseTextarea.count()) > 0;
 
-    if (hasLicensePage) {
+    // Also check for license-related text in page
+    const pageContent = await page.content();
+    const hasLicenseText =
+      pageContent.includes('license') || pageContent.includes('License') || pageContent.includes('Server ID');
+
+    console.log(`  License textarea found: ${hasLicensePage}`);
+    console.log(`  License text in page: ${hasLicenseText}`);
+
+    if (hasLicensePage || hasLicenseText) {
       // Get server ID from page
       console.log('  Extracting server ID...');
       const pageContent = await page.content();
@@ -244,7 +289,11 @@ async function main() {
       await page.waitForLoadState('networkidle');
       console.log('  License submitted');
     } else {
-      console.log('  License page not found, may already be configured');
+      console.log('  License page not found');
+      await page.screenshot({ path: '/tmp/jira-no-license-page.png' });
+      console.log('  Screenshot saved to /tmp/jira-no-license-page.png');
+      // Show first 500 chars of page for debugging
+      console.log(`  Page excerpt: ${pageContent.substring(0, 500).replace(/\s+/g, ' ')}`);
     }
     console.log('');
 
