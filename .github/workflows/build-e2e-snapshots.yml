@@ -1,0 +1,133 @@
+name: Build E2E Snapshots
+
+on:
+  schedule:
+    # Run every 5 days at 3am UTC
+    - cron: '0 3 */5 * *'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if snapshots exist'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  E2E_JIRA_BASE_URL: http://localhost:8080
+  E2E_JIRA_USERNAME: admin
+  E2E_JIRA_PASSWORD: admin
+  SNAPSHOT_RELEASE_TAG: e2e-snapshots
+
+jobs:
+  build-snapshots:
+    name: Build and Upload E2E Snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Build action and E2E scripts
+        run: yarn build
+
+      - name: Pull Docker images
+        run: |
+          docker pull haxqer/jira:9.17.5
+          docker pull mysql:8.0
+
+      - name: Run full Jira setup
+        run: |
+          echo "=== Starting Jira containers ==="
+          yarn e2e:up
+
+          echo "=== Running Jira setup wizard ==="
+          yarn e2e:setup
+
+          echo "=== Waiting for Jira API ==="
+          yarn e2e:wait
+
+          echo "=== Seeding test data ==="
+          yarn e2e:seed
+        timeout-minutes: 15
+
+      - name: Save snapshots
+        run: |
+          echo "=== Stopping containers for consistent snapshot ==="
+          cd e2e/docker && docker compose stop && cd ../..
+
+          echo "=== Saving volume snapshots ==="
+          yarn e2e:snapshot:save
+
+          echo "=== Snapshot contents ==="
+          ls -lah e2e/snapshots/
+
+      - name: Create snapshot archive
+        run: |
+          cd e2e/snapshots
+          tar -czvf ../e2e-snapshots.tar.gz .
+          cd ..
+          ls -lah e2e-snapshots.tar.gz
+          echo "SNAPSHOT_SIZE=$(du -h e2e-snapshots.tar.gz | cut -f1)" >> $GITHUB_ENV
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if release exists
+          if gh release view ${{ env.SNAPSHOT_RELEASE_TAG }} &>/dev/null; then
+            echo "Updating existing release..."
+            gh release upload ${{ env.SNAPSHOT_RELEASE_TAG }} e2e/e2e-snapshots.tar.gz --clobber
+          else
+            echo "Creating new release..."
+            gh release create ${{ env.SNAPSHOT_RELEASE_TAG }} \
+              --title "E2E Test Snapshots" \
+              --notes "Pre-configured Jira Data Center snapshots for E2E testing.
+
+          **Contents:**
+          - MySQL database with Jira schema
+          - Jira home directory with license and configuration
+          - Test project (E2E) with sample issues
+
+          **Usage:** Downloaded automatically by E2E workflow.
+
+          **Auto-updated:** Every 5 days via scheduled workflow." \
+              e2e/e2e-snapshots.tar.gz
+          fi
+
+      - name: Update release notes with timestamp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit ${{ env.SNAPSHOT_RELEASE_TAG }} \
+            --notes "Pre-configured Jira Data Center snapshots for E2E testing.
+
+          **Last Updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Snapshot Size:** ${{ env.SNAPSHOT_SIZE }}
+          **Jira Version:** 9.17.5
+          **MySQL Version:** 8.0
+
+          **Contents:**
+          - MySQL database with Jira schema
+          - Jira home directory with license and configuration
+          - Test project (E2E) with sample issues
+
+          **Usage:** Downloaded automatically by E2E workflow.
+
+          **Auto-updated:** Every 5 days via scheduled workflow."
+
+      - name: Cleanup
+        if: always()
+        run: yarn e2e:down

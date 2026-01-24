@@ -7,10 +7,7 @@
   "editor.defaultFormatter": "dbaeumer.vscode-eslint",
   "editor.formatOnSave": true,
   "eslint.alwaysShowStatus": true,
-  "eslint.validate": [
-    "javascript",
-    "typescript"
-  ],
+  "eslint.validate": ["javascript", "typescript"],
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -27,7 +24,7 @@
   "javascript.preferences.quoteStyle": "single",
   "vetur.format.defaultFormatterOptions": {
     "prettier": {
-        "semi": false
+      "semi": false
     }
   }
 }

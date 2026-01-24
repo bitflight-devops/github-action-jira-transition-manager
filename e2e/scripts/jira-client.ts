@@ -2,9 +2,53 @@
  * Jira E2E client using jira.js library
  * Same library as the main action for consistency
  */
-import { Version2Client, Version2Models } from 'jira.js';
+import { Version2Client, type Version2Models } from 'jira.js';
 
-import { E2EConfig } from './e2e-config';
+import type { E2EConfig } from './e2e-config';
+
+// Constants for formatting and logging
+const MIN_ID_LENGTH_FOR_MASKING = 8;
+const STACK_TRACE_LINES = 3;
+
+/**
+ * Extract detailed error information from Jira API errors
+ * jira.js wraps axios errors and includes response data
+ */
+function extractJiraErrorDetails(error: unknown): string {
+  const err = error as Error & {
+    response?: { data?: { errors?: Record<string, string>; errorMessages?: string[] }; status?: number };
+  };
+
+  const parts: string[] = [err.message || String(error)];
+
+  if (err.response?.status) {
+    parts.push(`Status: ${err.response.status}`);
+  }
+
+  if (err.response?.data?.errors) {
+    const errorDetails = Object.entries(err.response.data.errors)
+      .map(([field, msg]) => `${field}: ${msg}`)
+      .join(', ');
+    if (errorDetails) {
+      parts.push(`Fields: ${errorDetails}`);
+    }
+  }
+
+  if (err.response?.data?.errorMessages?.length) {
+    parts.push(`Messages: ${err.response.data.errorMessages.join(', ')}`);
+  }
+
+  return parts.join(' | ');
+}
+
+// Project template keys for Jira Data Center
+// Reference: https://support.atlassian.com/jira/kb/creating-projects-via-rest-api-in-jira-server-and-data-center/
+const PROJECT_TEMPLATES = {
+  SOFTWARE_SCRUM: 'com.pyxis.greenhopper.jira:gh-scrum-template',
+  SOFTWARE_KANBAN: 'com.pyxis.greenhopper.jira:gh-kanban-template',
+  SOFTWARE_BASIC: 'com.pyxis.greenhopper.jira:basic-software-development-template',
+  BUSINESS_CORE: 'com.atlassian.jira-core-project-templates:jira-core-project-management',
+} as const;
 
 export interface JiraProject {
   id: string;
@@ -41,22 +85,75 @@ export interface JiraSearchResult {
 
 export class JiraE2EClient {
   private client: Version2Client;
-  private config: E2EConfig;
+  private baseUrl: string;
+  private authHeader: string;
 
   constructor(config: E2EConfig) {
-    this.config = config;
-
     // jira.js uses email/apiToken field names for basic auth
     // For Data Center, map username->email and password->apiToken
     const email = config.jira.auth.email || config.jira.auth.username || '';
     const apiToken = config.jira.auth.apiToken || config.jira.auth.password || '';
 
+    this.baseUrl = config.jira.baseUrl;
     this.client = new Version2Client({
       host: config.jira.baseUrl,
       authentication: {
         basic: { email, apiToken },
       },
     });
+
+    // Store auth header for raw API calls (needed for Data Center project creation)
+    // jira.js doesn't support the 'lead' field required by Data Center
+    this.authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+  }
+
+  /**
+   * Create a project with the appropriate lead field for Cloud vs Data Center
+   *
+   * jira.js library only supports 'leadAccountId' (Cloud) and filters out 'lead' (Data Center).
+   * This method uses native fetch for Data Center to send the 'lead' field directly.
+   */
+  private async createProjectWithLead(
+    basePayload: { key: string; name: string; projectTypeKey: string; projectTemplateKey: string },
+    isCloud: boolean,
+    leadIdentifier: string,
+  ): Promise<{ id?: number; key?: string }> {
+    if (isCloud) {
+      // Cloud: use jira.js which supports leadAccountId
+      return this.client.projects.createProject({
+        ...basePayload,
+        leadAccountId: leadIdentifier,
+      } as any);
+    }
+
+    // Data Center: use native fetch because jira.js filters out the 'lead' field
+    // The 'lead' field expects a username string (e.g., 'admin'), not a user key (e.g., 'JIRAUSER10000')
+    const response = await fetch(`${this.baseUrl}/rest/api/2/project`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: this.authHeader,
+      },
+      body: JSON.stringify({ ...basePayload, lead: leadIdentifier }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as {
+        errorMessages?: string[];
+        errors?: Record<string, string>;
+      };
+      const errorMsg = errorData.errorMessages?.join(', ') || response.statusText;
+      const fieldErrors = errorData.errors
+        ? Object.entries(errorData.errors)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ')
+        : '';
+      throw new Error(
+        `Request failed with status code ${response.status}${fieldErrors ? ` | Fields: ${fieldErrors}` : ''}${errorMsg ? ` | ${errorMsg}` : ''}`,
+      );
+    }
+
+    return (await response.json()) as { id?: number; key?: string };
   }
 
   /**
@@ -76,51 +173,127 @@ export class JiraE2EClient {
   }
 
   /**
+   * Get current user information for project lead assignment
+   *
+   * @returns {Promise<{accountId?: string, name?: string, isCloud: boolean}>} User info with deployment type
+   *
+   * @remarks
+   * Jira Cloud uses accountId for project lead
+   * Jira Data Center uses username (name field) for project lead
+   * We detect Cloud by presence of accountId field
+   */
+  async getCurrentUserInfo(): Promise<{ accountId?: string; name?: string; key?: string; isCloud: boolean }> {
+    const user = await this.client.myself.getCurrentUser();
+    // Cloud has accountId, Data Center does not
+    const isCloud = !!user.accountId;
+    // Log user details for debugging project lead issues
+    console.log(`  User details: name=${user.name}, key=${user.key}, accountId=${user.accountId}`);
+    return {
+      accountId: user.accountId,
+      name: user.name,
+      key: user.key,
+      isCloud,
+    };
+  }
+
+  /**
    * Get or create a project
    */
   async ensureProject(key: string, name: string): Promise<JiraProject> {
     try {
       // Try to get existing project
       const project = await this.client.projects.getProject({ projectIdOrKey: key });
+      console.log(`  Project ${key} already exists`);
       return {
         id: project.id || '',
         key: project.key || key,
         name: project.name || name,
         projectTypeKey: project.projectTypeKey || 'software',
       };
-    } catch {
+    } catch (_getError) {
       // Project doesn't exist, create it
-      const lead = this.config.jira.auth.username || this.config.jira.auth.email || 'admin';
+      console.log(`  Project ${key} does not exist, creating...`);
+
+      // Get the current user info to determine Cloud vs Data Center
+      let userInfo: { accountId?: string; name?: string; key?: string; isCloud: boolean };
+      try {
+        userInfo = await this.getCurrentUserInfo();
+        // For Data Center, use 'name' (username) - Jira REST API expects username, not internal key
+        const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
+
+        // Validate we have the required identifier
+        if (!identifier) {
+          throw new Error(`Missing required user identifier: ${userInfo.isCloud ? 'accountId' : 'name/key'}`);
+        }
+
+        // Log only first/last 4 chars to avoid exposing full identifier
+        const maskedId =
+          identifier.length > MIN_ID_LENGTH_FOR_MASKING
+            ? `${identifier.substring(0, 4)}...${identifier.substring(identifier.length - 4)}`
+            : identifier;
+        console.log(`  Detected ${userInfo.isCloud ? 'Cloud' : 'Data Center'}, using lead: ${maskedId}`);
+      } catch (userError) {
+        console.error(`  Failed to get current user info: ${(userError as Error).message}`);
+        throw new Error(`Cannot create project: Unable to determine user info - ${(userError as Error).message}`);
+      }
+
+      // Build the project creation payload based on deployment type
+      const basePayload = {
+        key,
+        name,
+        projectTypeKey: 'software' as const,
+        // Data Center requires projectTemplateKey - use Scrum template which supports fixVersions
+        // Note: This assumes standard templates are available. Custom Jira instances may need different templates.
+        projectTemplateKey: PROJECT_TEMPLATES.SOFTWARE_SCRUM,
+      };
 
       // Try software project first - it supports fixVersions
       try {
-        const project = await this.client.projects.createProject({
-          key,
-          name,
-          projectTypeKey: 'software',
-          leadAccountId: lead,
-        });
+        const project = await this.createProjectWithLead(
+          { ...basePayload },
+          userInfo.isCloud,
+          userInfo.isCloud ? userInfo.accountId! : userInfo.name!,
+        );
+        console.log(`  Created software project ${key}`);
         return {
           id: project.id?.toString() || '',
           key: project.key || key,
           name: name,
           projectTypeKey: 'software',
         };
-      } catch {
-        console.log(`  Note: Software project failed, trying business type`);
+      } catch (softwareError) {
+        const errorMsg = extractJiraErrorDetails(softwareError);
+        console.log(`  Software project creation failed: ${errorMsg}`);
+        console.log(`  Trying business project type...`);
+
         // Fall back to business type
-        const project = await this.client.projects.createProject({
-          key,
-          name,
-          projectTypeKey: 'business',
-          leadAccountId: lead,
-        });
-        return {
-          id: project.id?.toString() || '',
-          key: project.key || key,
-          name: name,
-          projectTypeKey: 'business',
-        };
+        try {
+          const businessPayload = {
+            key,
+            name,
+            projectTypeKey: 'business' as const,
+            projectTemplateKey: PROJECT_TEMPLATES.BUSINESS_CORE,
+          };
+
+          const project = await this.createProjectWithLead(
+            businessPayload,
+            userInfo.isCloud,
+            userInfo.isCloud ? userInfo.accountId! : userInfo.name!,
+          );
+          console.log(`  Created business project ${key}`);
+          return {
+            id: project.id?.toString() || '',
+            key: project.key || key,
+            name: name,
+            projectTypeKey: 'business',
+          };
+        } catch (businessError) {
+          const businessErrorMsg = extractJiraErrorDetails(businessError);
+          console.error(`  Business project creation also failed: ${businessErrorMsg}`);
+          throw new Error(
+            `Failed to create project ${key}: Software type failed (${errorMsg}), Business type failed (${businessErrorMsg})`,
+          );
+        }
       }
     }
   }
@@ -148,7 +321,7 @@ export class JiraE2EClient {
     const project = await this.client.projects.getProject({ projectIdOrKey: projectKey });
     const version = await this.client.projectVersions.createVersion({
       name: versionName,
-      projectId: parseInt(project.id || '0', 10),
+      projectId: Number.parseInt(project.id || '0', 10),
       released: false,
       archived: false,
     });
@@ -283,35 +456,76 @@ export class JiraE2EClient {
    */
   async configureScreensForFixVersions(): Promise<void> {
     try {
+      console.log('  Fetching screens...');
       // Get all screens
       const screensResult = await this.client.screens.getScreens({});
-      const screens = screensResult.values || [];
+
+      // Validate the response structure
+      if (!screensResult || typeof screensResult !== 'object') {
+        console.log(`  Note: Unexpected screens response format: ${typeof screensResult}`);
+        return;
+      }
+
+      // The API response should have a 'values' array
+      const screens = Array.isArray(screensResult.values) ? screensResult.values : [];
+
+      if (screens.length === 0) {
+        console.log('  No screens found or screens.values is empty');
+        return;
+      }
+
+      console.log(`  Found ${screens.length} screens, adding fixVersions field...`);
 
       for (const screen of screens) {
-        if (!screen.id) continue;
-
-        // Get tabs for this screen
-        const tabs = await this.client.screenTabs.getAllScreenTabs({ screenId: screen.id });
-
-        if (tabs.length === 0) continue;
-
-        // Try to add fixVersions to the first tab
-        const tabId = tabs[0].id;
-        if (!tabId) continue;
+        if (!screen.id) {
+          console.log(`  Skipping screen without ID: ${screen.name || 'unknown'}`);
+          continue;
+        }
 
         try {
-          await this.client.screenTabFields.addScreenTabField({
-            screenId: screen.id,
-            tabId,
-            fieldId: 'fixVersions',
-          });
-          console.log(`  Added fixVersions to screen: ${screen.name}`);
-        } catch {
-          // Field might already exist on this screen, that's fine
+          // Get tabs for this screen
+          const tabs = await this.client.screenTabs.getAllScreenTabs({ screenId: screen.id });
+
+          if (tabs.length === 0) {
+            console.log(`  No tabs found for screen: ${screen.name}`);
+            continue;
+          }
+
+          // Try to add fixVersions to the first tab
+          const tabId = tabs[0].id;
+          if (!tabId) {
+            console.log(`  First tab has no ID for screen: ${screen.name}`);
+            continue;
+          }
+
+          try {
+            await this.client.screenTabFields.addScreenTabField({
+              screenId: screen.id,
+              tabId,
+              fieldId: 'fixVersions',
+            });
+            console.log(`  ✓ Added fixVersions to screen: ${screen.name}`);
+          } catch (addError) {
+            // Field might already exist on this screen, that's fine
+            const errorMsg = (addError as Error).message || String(addError);
+            if (errorMsg.includes('already') || errorMsg.includes('exist')) {
+              console.log(`  - fixVersions already on screen: ${screen.name}`);
+            } else {
+              console.log(`  Could not add fixVersions to screen ${screen.name}: ${errorMsg}`);
+            }
+          }
+        } catch (tabError) {
+          console.log(`  Could not get tabs for screen ${screen.name}: ${(tabError as Error).message}`);
         }
       }
     } catch (error) {
-      console.log(`  Note: Could not configure screens (${(error as Error).message})`);
+      const errorMsg = (error as Error).message || String(error);
+      console.log(`  Note: Could not configure screens: ${errorMsg}`);
+      // Log more details for debugging
+      if (error instanceof Error && error.stack) {
+        const stackLines = error.stack.split('\n').slice(0, STACK_TRACE_LINES);
+        console.log(`  Stack trace:\n    ${stackLines.join('\n    ')}`);
+      }
     }
   }
 

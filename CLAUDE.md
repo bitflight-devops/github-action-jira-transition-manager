@@ -46,29 +46,43 @@ const client = new Version2Client({
 // Use client.issues, client.projects, client.projectVersions, etc.
 ```
 
+**Data Center Limitation**: jira.js is designed for Jira Cloud. For project creation on Data Center, it only maps `leadAccountId` (Cloud account ID), not `lead` (username string). The E2E client (`e2e/scripts/jira-client.ts`) works around this by using raw HTTP requests for Data Center project creation. See `createProjectDirect()` method.
+
 ## Commands
 
 ```bash
-# Build (compiles to dist/ via ncc)
+# Build (compiles to dist/index.js via Rollup in ESM format)
 yarn build
 
-# Lint and format
-yarn lint
-yarn format
+# Lint and format (uses Biome)
+yarn lint       # Check linting and formatting
+yarn lint:fix   # Auto-fix linting and formatting issues
+yarn format     # Format files only
+
+# Markdown linting
+yarn lint:markdown      # Check markdown syntax
+yarn lint:markdown:fix  # Auto-fix markdown issues
 
 # Unit tests (Vitest, mocked Jira)
 yarn test
 yarn test:watch
 yarn test -- --testNamePattern="pattern" # Run specific test
 
-# E2E tests (requires Docker)
-yarn e2e:up    # Start Jira + MySQL containers
-yarn e2e:setup # Run Playwright setup wizard automation
-yarn e2e:wait  # Wait for Jira API ready
-yarn e2e:seed  # Create test project/issues
-yarn e2e:test  # Run E2E test suite
-yarn e2e:down  # Stop containers
-yarn e2e:all   # Full E2E sequence
+# E2E tests (requires Docker and Playwright)
+yarn e2e:up           # Start Jira + MySQL containers
+yarn e2e:setup        # Run Playwright setup wizard automation
+yarn e2e:wait         # Wait for Jira API ready
+yarn e2e:seed         # Create test project/issues
+yarn e2e:test         # Run E2E test suite
+yarn e2e:logs         # Show Docker container logs
+yarn e2e:down         # Stop containers
+yarn e2e:all          # Full E2E sequence (up → setup → wait → seed → test)
+yarn e2e:fast         # Fast E2E (restore from snapshots if valid, else full setup)
+
+# E2E snapshots (Docker volume caching for faster CI)
+yarn e2e:snapshot:check   # Check if snapshots are valid
+yarn e2e:snapshot:restore # Restore from cached snapshots
+yarn e2e:snapshot:save    # Save current Docker volumes as snapshots
 ```
 
 ## Testing
@@ -93,11 +107,18 @@ Located in `e2e/`. Uses a Dockerized Jira Data Center instance (`haxqer/jira:9.1
 - Fast path: Restore from cached Docker volume snapshots
 - Slow path: Full Jira setup from scratch
 
-## TypeScript Configuration
+## Build and TypeScript Configuration
 
-- `tsconfig.json` - Main action code
-- `e2e/tsconfig.json` - E2E scripts (separate compilation to `e2e/dist/`)
-- `tsconfig.eslint.json` - ESLint type checking
+- **Build System**: Rollup with TypeScript plugin (see `rollup.config.ts`)
+- **Output Format**: ESM (`dist/index.js`)
+- **tsconfig.json**: Main action code configured for ESM (`module: ESNext`, `moduleResolution: Bundler`)
+- **e2e/tsconfig.json**: E2E scripts (separate TypeScript compilation to `e2e/dist/`)
+
+## CI/CD Pipeline Monitoring
+
+For monitoring GitHub Actions workflows, tracing errors, and collecting logs using the `gh` CLI, see:
+
+@.claude/docs/gh-pipeline-monitoring.md
 
 ## Notes
 

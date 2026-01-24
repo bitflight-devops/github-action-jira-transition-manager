@@ -1,8 +1,8 @@
 import * as core from '@actions/core';
-import { Context } from '@actions/github/lib/context';
+import type { Context } from '@actions/github/lib/context';
 
-import { Args, JiraConfig } from './@types';
-import Issue, { IssueOutput } from './Issue';
+import type { Args, JiraConfig } from './@types';
+import Issue, { type IssueOutput } from './Issue';
 import Jira from './Jira';
 
 export class Action {
@@ -26,7 +26,7 @@ export class Action {
     this.githubEvent = githubEvent;
   }
 
-  async transitionIssue(issueObj: Issue): Promise<IssueOutput | void> {
+  async transitionIssue(issueObj: Issue): Promise<IssueOutput | undefined> {
     return issueObj
       .transition()
       .then(async () => {
@@ -40,6 +40,7 @@ export class Action {
             core.error(error);
           }
         }
+        return undefined;
       });
   }
 
@@ -48,12 +49,23 @@ export class Action {
     const issueList = argv.issues.split(',');
     let successes = 0;
     let failures = 0;
-    const applyIssueList: Promise<IssueOutput | void>[] = [];
+    const applyIssueList: Promise<IssueOutput | undefined>[] = [];
     for (const issueKey of issueList) {
       applyIssueList.push(
         new Issue(issueKey.trim(), jira, argv, githubEvent)
           .build()
-          .then(async (issueObj) => this.transitionIssue(issueObj)),
+          .then(async (issueObj) => this.transitionIssue(issueObj))
+          .catch((error) => {
+            // Handle errors from build() (e.g., issue not found)
+            if (error instanceof Error) {
+              if (argv.failOnError) {
+                core.setFailed(error);
+              } else {
+                core.error(`Failed to process issue ${issueKey}: ${error.message}`);
+              }
+            }
+            return undefined;
+          }),
       );
     }
     const issueOutputs: IssueOutput[] = await Promise.all(applyIssueList).then(

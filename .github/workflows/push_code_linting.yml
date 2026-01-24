@@ -1,19 +1,21 @@
 name: Code Linting
 on: [pull_request]
 jobs:
-  eslint:
-    name: runner / eslint
+  biome:
+    name: runner / biome
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v6.0.1
-      - uses: actions/setup-node@v6.2.0
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'yarn'
       - run: yarn install
-      - name: eslint
-        uses: reviewdog/action-eslint@v1
+      - name: biome
+        uses: mongolyy/reviewdog-action-biome@v2.8.0
         with:
           github_token: ${{ secrets.github_token }}
-          reporter: github-pr-review # Change reporter.
-
+          reporter: github-pr-review

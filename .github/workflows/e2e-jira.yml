@@ -7,8 +7,8 @@ on:
       - develop
   workflow_dispatch:
     inputs:
-      skip_cache:
-        description: 'Skip snapshot cache (force full setup)'
+      skip_snapshots:
+        description: 'Skip snapshot restore (force full setup)'
         required: false
         default: 'false'
         type: boolean
@@ -20,6 +20,7 @@ env:
   E2E_JIRA_BASE_URL: http://localhost:8080
   E2E_JIRA_USERNAME: admin
   E2E_JIRA_PASSWORD: admin
+  SNAPSHOT_RELEASE_TAG: e2e-snapshots
 
 jobs:
   e2e-jira:
@@ -29,10 +30,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'yarn'
@@ -48,10 +49,10 @@ jobs:
 
       - name: Cache Docker images
         id: cache-docker
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: /tmp/docker-images
-          key: docker-images-${{ hashFiles('e2e/docker/compose.yml') }}
+          key: docker-images-v1-${{ hashFiles('e2e/docker/compose.yml') }}
 
       - name: Load cached Docker images
         if: steps.cache-docker.outputs.cache-hit == 'true'
@@ -72,13 +73,26 @@ jobs:
           docker save haxqer/jira:9.17.5 -o /tmp/docker-images/jira.tar
           docker save mysql:8.0 -o /tmp/docker-images/mysql.tar
 
-      - name: Restore E2E snapshots from cache
-        if: ${{ github.event.inputs.skip_cache != 'true' }}
-        id: cache-snapshots
-        uses: actions/cache@v5
-        with:
-          path: e2e/snapshots
-          key: jira-e2e-snapshots-${{ hashFiles('e2e/docker/compose.yml') }}
+      - name: Download snapshots from release
+        id: download-snapshots
+        if: ${{ github.event.inputs.skip_snapshots != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Attempting to download snapshots from release..."
+          if gh release download ${{ env.SNAPSHOT_RELEASE_TAG }} \
+              --pattern 'e2e-snapshots.tar.gz' \
+              --dir /tmp 2>/dev/null; then
+            echo "Extracting snapshots..."
+            mkdir -p e2e/snapshots
+            tar -xzf /tmp/e2e-snapshots.tar.gz -C e2e/snapshots
+            echo "downloaded=true" >> $GITHUB_OUTPUT
+            echo "Snapshots downloaded and extracted:"
+            ls -lah e2e/snapshots/
+          else
+            echo "No snapshot release found, will run full setup"
+            echo "downloaded=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check snapshot validity
         id: snapshot-check
@@ -88,7 +102,7 @@ jobs:
             echo "Snapshots are valid and ready to restore"
           else
             echo "valid=false" >> $GITHUB_OUTPUT
-            echo "Snapshots not available, will run full setup"
+            echo "Snapshots not available or invalid, will run full setup"
           fi
 
       - name: Restore from snapshots (fast path)
@@ -133,14 +147,6 @@ jobs:
         with:
           issues: ${{ steps.create-issue.outputs.issue_key }}
 
-      - name: Save snapshots for cache
-        if: steps.snapshot-check.outputs.valid != 'true' && success()
-        run: |
-          echo "=== Saving snapshots for future runs ==="
-          cd e2e/docker && docker compose stop && cd ../..
-          yarn e2e:snapshot:save
-          echo "Snapshot saved successfully"
-
       - name: Collect and display Docker logs on failure
         if: failure()
         run: |
@@ -178,7 +184,7 @@ jobs:
 
       - name: Upload E2E artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: e2e-artifacts
           path: e2e/artifacts/

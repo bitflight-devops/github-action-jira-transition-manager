@@ -12,8 +12,8 @@
  *   0 - Snapshots exist and are valid
  *   1 - Snapshots missing or invalid
  */
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 interface SnapshotMetadata {
   createdAt: string;
@@ -61,7 +61,7 @@ function checkSnapshots(inputDir: string): CheckResult {
   try {
     metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
     result.metadata = metadata;
-  } catch (error) {
+  } catch (_error) {
     result.missingFiles.push('snapshot-metadata.json (invalid JSON)');
     return result;
   }
@@ -98,7 +98,8 @@ async function main(): Promise<void> {
   // Parse arguments
   const args = process.argv.slice(2);
   const inputDirIndex = args.indexOf('--input-dir');
-  let inputDir = path.join(__dirname, '..', 'snapshots');
+  // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into snapshots/
+  let inputDir = path.join(__dirname, '..', '..', 'snapshots');
 
   if (inputDirIndex !== -1 && args[inputDirIndex + 1]) {
     inputDir = path.resolve(args[inputDirIndex + 1]);

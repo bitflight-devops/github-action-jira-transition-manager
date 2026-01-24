@@ -1,6 +1,6 @@
-import { Version2Client, Version2Models, Version2Parameters } from 'jira.js';
+import { Version2Client, type Version2Models, type Version2Parameters } from 'jira.js';
 
-import { JiraConfig } from './@types';
+import type { JiraConfig } from './@types';
 
 export default class Jira {
   baseUrl: string;

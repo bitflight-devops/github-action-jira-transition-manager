@@ -8,7 +8,7 @@
  * 2. Generate and submit license
  * 3. Complete admin setup
  */
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn } from 'node:child_process';
 
 import { getE2EConfig } from './e2e-config';
 
@@ -231,7 +231,7 @@ function parseCookies(response: Response): string {
       const parts = setCookie.split(/,\s*(?=[A-Za-z_][A-Za-z0-9_]*=)/);
       for (const part of parts) {
         const nameValue = part.split(';')[0].trim();
-        if (nameValue && nameValue.includes('=')) {
+        if (nameValue?.includes('=')) {
           cookies.push(nameValue);
         }
       }
@@ -272,7 +272,7 @@ function insertLicenseViaDatabase(license: string): boolean {
     const checkResult = execQuiet(
       `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM jira.productlicense" 2>/dev/null`,
     );
-    const existingCount = parseInt(checkResult.trim(), 10);
+    const existingCount = Number.parseInt(checkResult.trim(), 10);
 
     if (existingCount > 0) {
       // Update existing license
@@ -292,7 +292,7 @@ function insertLicenseViaDatabase(license: string): boolean {
     const verifyResult = execQuiet(
       `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM jira.productlicense WHERE LICENSE IS NOT NULL" 2>/dev/null`,
     );
-    const verifiedCount = parseInt(verifyResult.trim(), 10);
+    const verifiedCount = Number.parseInt(verifyResult.trim(), 10);
 
     if (verifiedCount > 0) {
       console.log('✓ License inserted into database');
@@ -343,7 +343,7 @@ async function submitLicenseViaHttp(baseUrl: string, license: string): Promise<b
       'X-Atlassian-Token': 'no-check',
     };
     if (cookieHeader) {
-      headers['Cookie'] = cookieHeader;
+      headers.Cookie = cookieHeader;
     }
 
     console.log(`  [DEBUG] Submitting to: ${baseUrl}/secure/SetupLicense.jspa`);
@@ -467,7 +467,7 @@ async function completeSetup(baseUrl: string, username: string, password: string
         'X-Atlassian-Token': 'no-check',
       };
       if (cookieHeader) {
-        headers['Cookie'] = cookieHeader;
+        headers.Cookie = cookieHeader;
       }
 
       const response = await fetch(`${baseUrl}${step.url}`, {

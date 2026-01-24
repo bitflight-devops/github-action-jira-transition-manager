@@ -4,7 +4,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Args } from '../src/@types';
+import type { Args } from '../src/@types';
 import { Action } from '../src/action';
 import * as fsHelper from '../src/fs-helper';
 import * as inputHelper from '../src/input-helper';

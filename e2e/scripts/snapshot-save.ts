@@ -12,9 +12,9 @@
  *   - Docker must be running
  *   - Jira containers should be stopped (data volumes must exist)
  */
-import { execSync, spawnSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execSync, spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 interface SnapshotConfig {
   outputDir: string;
@@ -26,7 +26,8 @@ interface SnapshotConfig {
 }
 
 const defaultConfig: SnapshotConfig = {
-  outputDir: path.join(__dirname, '..', 'snapshots'),
+  // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into snapshots/
+  outputDir: path.join(__dirname, '..', '..', 'snapshots'),
   volumes: [
     { name: 'jira-data', file: 'jira-data-snapshot.tar.gz' },
     { name: 'mysql-data', file: 'mysql-data-snapshot.tar.gz' },
@@ -61,7 +62,8 @@ function volumeExists(volumeName: string): boolean {
 
 function stopContainers(): void {
   console.log('Stopping containers to ensure data consistency...');
-  const composeDir = path.join(__dirname, '..', 'docker');
+  // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
+  const composeDir = path.join(__dirname, '..', '..', 'docker');
 
   try {
     execSync('docker compose stop', {
@@ -69,7 +71,7 @@ function stopContainers(): void {
       stdio: 'inherit',
     });
     console.log('Containers stopped');
-  } catch (error) {
+  } catch (_error) {
     console.log('Note: Could not stop containers (may not be running)');
   }
 }

@@ -2,7 +2,7 @@ import * as path from 'node:path';
 
 import * as core from '@actions/core';
 
-import { Args, JiraAuthConfig } from './@types';
+import type { Args, JiraAuthConfig } from './@types';
 import * as fsHelper from './fs-helper';
 
 export function getInputs(): Args {
