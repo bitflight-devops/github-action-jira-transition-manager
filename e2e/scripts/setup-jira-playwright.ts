@@ -96,6 +96,14 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
     // Only look at logs from the last 5 seconds to avoid matching old messages
     const logs = execQuiet(`docker logs --since 5s ${CONTAINER_NAME} 2>&1`);
 
+    // Log what we're seeing (trimmed, one line per poll)
+    if (logs.trim()) {
+      const lastLine = logs.trim().split('\n').pop() || '';
+      // Show abbreviated log line (first 100 chars)
+      const abbrev = lastLine.length > 100 ? lastLine.substring(0, 100) + '...' : lastLine;
+      console.log(`  [${elapsed}s] ${abbrev}`);
+    }
+
     // Check for errors first
     for (const { pattern, msg } of errorPatterns) {
       if (pattern.test(logs)) {
@@ -116,7 +124,6 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
       return { ready: true };
     }
 
-    // Silent wait - only log on state changes (starting detected, ready, or error)
     execSync('sleep 2');
   }
 
