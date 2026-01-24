@@ -40,8 +40,37 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
       - name: Build action and E2E scripts
         run: yarn build
+
+      - name: Cache Docker images
+        id: cache-docker
+        uses: actions/cache@v5
+        with:
+          path: /tmp/docker-images
+          key: docker-images-${{ hashFiles('e2e/docker/compose.yml') }}
+
+      - name: Load cached Docker images
+        if: steps.cache-docker.outputs.cache-hit == 'true'
+        run: |
+          if [ -f /tmp/docker-images/jira.tar ]; then
+            docker load -i /tmp/docker-images/jira.tar
+          fi
+          if [ -f /tmp/docker-images/mysql.tar ]; then
+            docker load -i /tmp/docker-images/mysql.tar
+          fi
+
+      - name: Pull and cache Docker images
+        if: steps.cache-docker.outputs.cache-hit != 'true'
+        run: |
+          docker pull haxqer/jira:9.17.5
+          docker pull mysql:8.0
+          mkdir -p /tmp/docker-images
+          docker save haxqer/jira:9.17.5 -o /tmp/docker-images/jira.tar
+          docker save mysql:8.0 -o /tmp/docker-images/mysql.tar
 
       - name: Restore E2E snapshots from cache
         if: ${{ github.event.inputs.skip_cache != 'true' }}
@@ -85,6 +114,25 @@ jobs:
         run: yarn e2e:test
         timeout-minutes: 10
 
+      - name: Create test issue for action
+        id: create-issue
+        run: |
+          ISSUE_KEY=$(curl -s -u admin:admin -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"fields":{"project":{"key":"E2E"},"summary":"Action in-place test","issuetype":{"name":"Task"}}}' \
+            http://localhost:8080/rest/api/2/issue | jq -r '.key')
+          echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+          echo "Created test issue: $ISSUE_KEY"
+
+      - name: Test Action In-Place
+        uses: ./
+        env:
+          JIRA_BASE_URL: http://localhost:8080
+          JIRA_USER_EMAIL: admin
+          JIRA_API_TOKEN: admin
+        with:
+          issues: ${{ steps.create-issue.outputs.issue_key }}
+
       - name: Save snapshots for cache
         if: steps.snapshot-check.outputs.valid != 'true' && success()
         run: |
@@ -93,13 +141,40 @@ jobs:
           yarn e2e:snapshot:save
           echo "Snapshot saved successfully"
 
-      - name: Collect Docker logs on failure
+      - name: Collect and display Docker logs on failure
         if: failure()
         run: |
           mkdir -p e2e/artifacts
-          yarn e2e:logs > e2e/artifacts/docker-logs.txt 2>&1 || true
-          docker ps -a > e2e/artifacts/containers.txt 2>&1 || true
-          docker stats --no-stream > e2e/artifacts/stats.txt 2>&1 || true
+          cp -r /tmp/jira-setup* e2e/artifacts/ 2>/dev/null || true
+
+          echo "=========================================="
+          echo "=== DOCKER CONTAINER STATUS ==="
+          echo "=========================================="
+          docker ps -a | tee e2e/artifacts/containers.txt
+
+          echo ""
+          echo "=========================================="
+          echo "=== DOCKER STATS ==="
+          echo "=========================================="
+          docker stats --no-stream 2>&1 | tee e2e/artifacts/stats.txt || true
+
+          echo ""
+          echo "=========================================="
+          echo "=== JIRA CONTAINER LOGS (last 200 lines) ==="
+          echo "=========================================="
+          docker logs --tail 200 jira-e2e 2>&1 | tee e2e/artifacts/jira-logs.txt || true
+
+          echo ""
+          echo "=========================================="
+          echo "=== MYSQL CONTAINER LOGS (last 100 lines) ==="
+          echo "=========================================="
+          docker logs --tail 100 jira-e2e-mysql 2>&1 | tee e2e/artifacts/mysql-logs.txt || true
+
+          echo ""
+          echo "=========================================="
+          echo "=== FULL DOCKER COMPOSE LOGS ==="
+          echo "=========================================="
+          yarn e2e:logs 2>&1 | tee e2e/artifacts/docker-logs.txt || true
 
       - name: Upload E2E artifacts on failure
         if: failure()

@@ -3,7 +3,6 @@ import typescript from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import prettier from 'eslint-plugin-prettier';
 import prettierConfig from 'eslint-config-prettier';
-import jest from 'eslint-plugin-jest';
 import importPlugin from 'eslint-plugin-import';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import sonarjs from 'eslint-plugin-sonarjs';
@@ -13,19 +12,23 @@ import jsonSchemaValidator from 'eslint-plugin-json-schema-validator';
 import * as yamlParser from 'yaml-eslint-parser';
 import * as jsoncParser from 'jsonc-eslint-parser';
 
+// Vitest globals for test files
+const vitestGlobals = {
+  describe: 'readonly',
+  it: 'readonly',
+  test: 'readonly',
+  expect: 'readonly',
+  beforeAll: 'readonly',
+  afterAll: 'readonly',
+  beforeEach: 'readonly',
+  afterEach: 'readonly',
+  vi: 'readonly',
+};
+
 export default [
   // Global ignores
   {
-    ignores: [
-      'node_modules/**',
-      'dist/**',
-      'lib/**',
-      'coverage/**',
-      'e2e/dist/**',
-      '*.d.ts',
-      'jest.config.ts',
-      'commitlint.config.js',
-    ],
+    ignores: ['node_modules/**', 'dist/**', 'lib/**', 'coverage/**', 'e2e/dist/**', '*.d.ts', 'commitlint.config.js'],
   },
 
   // Base JS recommended
@@ -210,19 +213,15 @@ export default [
     },
   },
 
-  // Test files - add jest globals and rules
+  // Test files - add Vitest globals
   {
     files: ['**/*.test.ts', '**/*.spec.ts', '__tests__/**/*.ts'],
-    plugins: {
-      jest,
-    },
     languageOptions: {
       globals: {
-        ...jest.configs['flat/recommended'].languageOptions.globals,
+        ...vitestGlobals,
       },
     },
     rules: {
-      ...jest.configs['flat/recommended'].rules,
       'unicorn/no-immediate-mutation': 'off',
     },
   },
@@ -230,16 +229,12 @@ export default [
   // E2E test files - more relaxed rules
   {
     files: ['e2e/**/*.ts'],
-    plugins: {
-      jest,
-    },
     languageOptions: {
       globals: {
-        ...jest.configs['flat/recommended'].languageOptions.globals,
+        ...vitestGlobals,
       },
     },
     rules: {
-      ...jest.configs['flat/recommended'].rules,
       '@typescript-eslint/explicit-function-return-type': 'off',
       'sonarjs/no-duplicate-string': 'off',
     },

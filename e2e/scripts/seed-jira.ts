@@ -13,12 +13,17 @@ async function seedJira(): Promise<void> {
   console.log('Starting Jira seeding...');
 
   try {
-    // 1. Ensure project exists
+    // 1. Configure screens to include fixVersions field
+    console.log('Configuring screens for fixVersions...');
+    await client.configureScreensForFixVersions();
+    console.log('✓ Screen configuration complete');
+
+    // 2. Ensure project exists
     console.log(`Ensuring project ${config.test.projectKey} exists...`);
     const project = await client.ensureProject(config.test.projectKey, config.test.projectName);
     console.log(`✓ Project: ${project.key} - ${project.name}`);
 
-    // 2. Ensure initial version exists
+    // 3. Ensure initial version exists
     console.log(`Ensuring version ${config.test.initialVersion} exists...`);
     const version = await client.ensureVersion(config.test.projectKey, config.test.initialVersion);
     console.log(`✓ Version: ${version.name} (ID: ${version.id})`);

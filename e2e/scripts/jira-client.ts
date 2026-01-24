@@ -1,7 +1,9 @@
 /**
- * Jira REST API client for E2E tests
- * Uses endpoints compatible with both Cloud and Data Center where possible
+ * Jira E2E client using jira.js library
+ * Same library as the main action for consistency
  */
+import { Version2Client, Version2Models } from 'jira.js';
+
 import { E2EConfig } from './e2e-config';
 
 export interface JiraProject {
@@ -12,24 +14,23 @@ export interface JiraProject {
 }
 
 export interface JiraVersion {
-  self: string;
-  id: string;
+  self?: string;
+  id?: string;
   name: string;
-  archived: boolean;
-  released: boolean;
-  projectId: number;
+  archived?: boolean;
+  released?: boolean;
+  projectId?: number | string;
 }
 
 export interface JiraIssue {
   id: string;
   key: string;
   fields: {
-    summary: string;
+    summary?: string;
     fixVersions?: JiraVersion[];
     status?: {
-      name: string;
+      name?: string;
     };
-    [key: string]: unknown;
   };
 }
 
@@ -39,65 +40,39 @@ export interface JiraSearchResult {
 }
 
 export class JiraE2EClient {
-  private baseUrl: string;
-  private authHeader: string;
+  private client: Version2Client;
   private config: E2EConfig;
 
   constructor(config: E2EConfig) {
     this.config = config;
-    this.baseUrl = config.jira.baseUrl;
 
-    // Set up authentication based on type
-    if (config.jira.auth.type === 'basic') {
-      const credentials = Buffer.from(`${config.jira.auth.username}:${config.jira.auth.password}`).toString('base64');
-      this.authHeader = `Basic ${credentials}`;
-    } else if (config.jira.auth.type === 'cloud') {
-      const credentials = Buffer.from(`${config.jira.auth.email}:${config.jira.auth.apiToken}`).toString('base64');
-      this.authHeader = `Basic ${credentials}`;
-    } else {
-      throw new Error(`Unsupported auth type: ${config.jira.auth.type}`);
-    }
-  }
+    // jira.js uses email/apiToken field names for basic auth
+    // For Data Center, map username->email and password->apiToken
+    const email = config.jira.auth.email || config.jira.auth.username || '';
+    const apiToken = config.jira.auth.apiToken || config.jira.auth.password || '';
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      'Authorization': this.authHeader,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      ...((options.headers as Record<string, string>) || {}),
-    };
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
+    this.client = new Version2Client({
+      host: config.jira.baseUrl,
+      authentication: {
+        basic: { email, apiToken },
+      },
     });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Jira API error: ${response.status} ${response.statusText}\n${text}`);
-    }
-
-    // Handle empty responses
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-      return {} as T;
-    }
-
-    return response.json() as Promise<T>;
   }
 
   /**
    * Check if Jira is ready by getting server info
    */
   async getServerInfo(): Promise<{ version: string; baseUrl: string }> {
-    return this.request('/rest/api/2/serverInfo');
+    const info = await this.client.serverInfo.getServerInfo();
+    return { version: info.version || 'unknown', baseUrl: info.baseUrl || '' };
   }
 
   /**
    * Get current user to verify authentication
    */
   async getMyself(): Promise<{ displayName: string; emailAddress?: string }> {
-    return this.request('/rest/api/2/myself');
+    const user = await this.client.myself.getCurrentUser();
+    return { displayName: user.displayName || 'unknown', emailAddress: user.emailAddress };
   }
 
   /**
@@ -106,24 +81,47 @@ export class JiraE2EClient {
   async ensureProject(key: string, name: string): Promise<JiraProject> {
     try {
       // Try to get existing project
-      return await this.request<JiraProject>(`/rest/api/2/project/${key}`);
+      const project = await this.client.projects.getProject({ projectIdOrKey: key });
+      return {
+        id: project.id || '',
+        key: project.key || key,
+        name: project.name || name,
+        projectTypeKey: project.projectTypeKey || 'software',
+      };
     } catch {
       // Project doesn't exist, create it
-      // Ensure we have a valid lead
       const lead = this.config.jira.auth.username || this.config.jira.auth.email || 'admin';
 
-      return this.request<JiraProject>('/rest/api/2/project', {
-        method: 'POST',
-        body: JSON.stringify({
+      // Try software project first - it supports fixVersions
+      try {
+        const project = await this.client.projects.createProject({
           key,
           name,
           projectTypeKey: 'software',
-          lead,
-          // Use simplified template that's widely available
-          // Note: Requires Jira Software, not available in Jira Core
-          projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-simplified-basic-software-development-template',
-        }),
-      });
+          leadAccountId: lead,
+        });
+        return {
+          id: project.id?.toString() || '',
+          key: project.key || key,
+          name: name,
+          projectTypeKey: 'software',
+        };
+      } catch {
+        console.log(`  Note: Software project failed, trying business type`);
+        // Fall back to business type
+        const project = await this.client.projects.createProject({
+          key,
+          name,
+          projectTypeKey: 'business',
+          leadAccountId: lead,
+        });
+        return {
+          id: project.id?.toString() || '',
+          key: project.key || key,
+          name: name,
+          projectTypeKey: 'business',
+        };
+      }
     }
   }
 
@@ -131,22 +129,37 @@ export class JiraE2EClient {
    * List all versions for a project
    */
   async listProjectVersions(projectKey: string): Promise<JiraVersion[]> {
-    return this.request<JiraVersion[]>(`/rest/api/2/project/${projectKey}/versions`);
+    const versions = await this.client.projectVersions.getProjectVersions({ projectIdOrKey: projectKey });
+    return versions.map((v) => ({
+      self: v.self,
+      id: v.id,
+      name: v.name || '',
+      archived: v.archived,
+      released: v.released,
+      projectId: v.projectId,
+    }));
   }
 
   /**
    * Create a version in a project
    */
   async createVersion(projectKey: string, versionName: string): Promise<JiraVersion> {
-    return this.request<JiraVersion>('/rest/api/2/version', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: versionName,
-        project: projectKey,
-        released: false,
-        archived: false,
-      }),
+    // Need to get project ID for creating version
+    const project = await this.client.projects.getProject({ projectIdOrKey: projectKey });
+    const version = await this.client.projectVersions.createVersion({
+      name: versionName,
+      projectId: parseInt(project.id || '0', 10),
+      released: false,
+      archived: false,
     });
+    return {
+      self: version.self,
+      id: version.id,
+      name: version.name || '',
+      archived: version.archived,
+      released: version.released,
+      projectId: version.projectId,
+    };
   }
 
   /**
@@ -167,12 +180,15 @@ export class JiraE2EClient {
    * Search for issues using JQL
    */
   async searchIssues(jql: string, fields?: string[]): Promise<JiraSearchResult> {
-    const params = new URLSearchParams({
+    const result = await this.client.issueSearch.searchForIssuesUsingJql({
       jql,
-      fields: fields ? fields.join(',') : '*all',
+      fields: fields || ['*all'],
     });
 
-    return this.request<JiraSearchResult>(`/rest/api/2/search?${params}`);
+    return {
+      issues: (result.issues || []).map((issue) => this.mapIssue(issue)),
+      total: result.total || 0,
+    };
   }
 
   /**
@@ -184,40 +200,58 @@ export class JiraE2EClient {
     issueType: string = 'Task',
     fixVersions?: string[],
   ): Promise<JiraIssue> {
-    const fields: Record<string, unknown> = {
-      project: { key: projectKey },
+    // Build properly typed fields
+    const baseFields = {
       summary,
+      project: { key: projectKey },
       issuetype: { name: issueType },
     };
 
+    // Try with fixVersions on create
     if (fixVersions && fixVersions.length > 0) {
-      fields.fixVersions = fixVersions.map((name) => ({ name }));
+      const fieldsWithVersions = {
+        ...baseFields,
+        fixVersions: fixVersions.map((name) => ({ name })),
+      };
+      try {
+        const response = await this.client.issues.createIssue({ fields: fieldsWithVersions });
+        return this.getIssue(response.key!);
+      } catch (error) {
+        // If fixVersions not on create screen, create then update
+        if (error instanceof Error && error.message.includes('fixVersions')) {
+          const response = await this.client.issues.createIssue({ fields: baseFields });
+          // Update with fixVersions (REST API update bypasses screen restrictions)
+          await this.updateIssue(response.key!, {
+            fixVersions: fixVersions.map((name) => ({ name })),
+          });
+          return this.getIssue(response.key!);
+        }
+        throw error;
+      }
     }
 
-    const response = await this.request<{ key: string; id: string }>('/rest/api/2/issue', {
-      method: 'POST',
-      body: JSON.stringify({ fields }),
-    });
-
-    // Get the full issue details
-    return this.getIssue(response.key);
+    const response = await this.client.issues.createIssue({ fields: baseFields });
+    return this.getIssue(response.key!);
   }
 
   /**
    * Get an issue by key
    */
   async getIssue(issueKey: string, fields?: string[]): Promise<JiraIssue> {
-    const params = fields ? `?fields=${fields.join(',')}` : '';
-    return this.request<JiraIssue>(`/rest/api/2/issue/${issueKey}${params}`);
+    const issue = await this.client.issues.getIssue({
+      issueIdOrKey: issueKey,
+      fields: fields || [],
+    });
+    return this.mapIssue(issue);
   }
 
   /**
    * Update issue fields
    */
   async updateIssue(issueKey: string, fields: Record<string, unknown>): Promise<void> {
-    await this.request(`/rest/api/2/issue/${issueKey}`, {
-      method: 'PUT',
-      body: JSON.stringify({ fields }),
+    await this.client.issues.editIssue({
+      issueIdOrKey: issueKey,
+      fields,
     });
   }
 
@@ -242,5 +276,58 @@ export class JiraE2EClient {
 
     // Create new issue
     return this.createIssue(projectKey, summary, issueType, fixVersions);
+  }
+
+  /**
+   * Add fixVersions field to all screens (ensures it's available on create/edit)
+   */
+  async configureScreensForFixVersions(): Promise<void> {
+    try {
+      // Get all screens
+      const screensResult = await this.client.screens.getScreens({});
+      const screens = screensResult.values || [];
+
+      for (const screen of screens) {
+        if (!screen.id) continue;
+
+        // Get tabs for this screen
+        const tabs = await this.client.screenTabs.getAllScreenTabs({ screenId: screen.id });
+
+        if (tabs.length === 0) continue;
+
+        // Try to add fixVersions to the first tab
+        const tabId = tabs[0].id;
+        if (!tabId) continue;
+
+        try {
+          await this.client.screenTabFields.addScreenTabField({
+            screenId: screen.id,
+            tabId,
+            fieldId: 'fixVersions',
+          });
+          console.log(`  Added fixVersions to screen: ${screen.name}`);
+        } catch {
+          // Field might already exist on this screen, that's fine
+        }
+      }
+    } catch (error) {
+      console.log(`  Note: Could not configure screens (${(error as Error).message})`);
+    }
+  }
+
+  /**
+   * Map jira.js Issue to our JiraIssue interface
+   */
+  private mapIssue(issue: Version2Models.Issue): JiraIssue {
+    const fields = issue.fields || {};
+    return {
+      id: issue.id || '',
+      key: issue.key || '',
+      fields: {
+        summary: fields.summary as string | undefined,
+        fixVersions: fields.fixVersions as JiraVersion[] | undefined,
+        status: fields.status as { name?: string } | undefined,
+      },
+    };
   }
 }

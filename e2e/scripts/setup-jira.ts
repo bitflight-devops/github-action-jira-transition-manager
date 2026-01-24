@@ -1,20 +1,542 @@
 #!/usr/bin/env node
 /**
- * Automate Jira Data Center setup wizard
- * This script handles the initial setup of Jira DC so it's ready for API access
+ * Automate Jira Data Center setup for haxqer/jira Docker image
+ *
+ * Database configuration is pre-mounted via Docker Compose (jira-dbconfig.xml).
+ * This script handles the remaining setup:
+ * 1. Wait for Jira to start and connect to database
+ * 2. Generate and submit license
+ * 3. Complete admin setup
  */
+import { execSync, spawn } from 'child_process';
+
 import { getE2EConfig } from './e2e-config';
 
-interface SetupStep {
-  name: string;
-  url: string;
-  method: string;
-  body?: Record<string, unknown>;
-  headers?: Record<string, string>;
-}
+const CONTAINER_NAME = 'jira-e2e';
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function exec(cmd: string, timeout = 30000): string {
+  try {
+    return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (error) {
+    const err = error as { stderr?: string; message: string };
+    console.log(`  Command failed: ${err.message}`);
+    if (err.stderr) console.log(`  stderr: ${err.stderr}`);
+    throw error;
+  }
+}
+
+function execQuiet(cmd: string, timeout = 30000): string {
+  try {
+    return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Watch Docker logs for a pattern
+ */
+async function waitForLogPattern(pattern: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    console.log(`  Watching for: "${pattern}" (timeout: ${timeoutMs / 1000}s)`);
+
+    const timeoutId = setTimeout(() => {
+      console.log(`  ⏱ Timed out waiting for pattern`);
+      dockerLogs.kill();
+      resolve(false);
+    }, timeoutMs);
+
+    const dockerLogs = spawn('docker', ['logs', '-f', '--since', '1s', CONTAINER_NAME], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let resolved = false;
+    const checkLine = (line: string): void => {
+      if (resolved) return;
+      if (line.includes(pattern)) {
+        resolved = true;
+        console.log(`  ✓ Found: "${pattern}"`);
+        clearTimeout(timeoutId);
+        dockerLogs.kill();
+        resolve(true);
+      }
+    };
+
+    dockerLogs.stdout?.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line.trim()) checkLine(line);
+      }
+    });
+
+    dockerLogs.stderr?.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line.trim()) checkLine(line);
+      }
+    });
+
+    dockerLogs.on('close', () => {
+      if (!resolved) {
+        clearTimeout(timeoutId);
+        resolve(false);
+      }
+    });
+  });
+}
+
+/**
+ * Get recent Docker logs
+ */
+function getDockerLogs(lines = 50): string {
+  return execQuiet(`docker logs --tail ${lines} ${CONTAINER_NAME} 2>&1`);
+}
+
+/**
+ * Wait for HTTP to be available
+ */
+async function waitForHttp(baseUrl: string, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(`${baseUrl}/status`, { signal: AbortSignal.timeout(5000) });
+      if (response.status > 0) {
+        return true;
+      }
+    } catch {
+      // Keep trying
+    }
+    await sleep(3000);
+  }
+  return false;
+}
+
+/**
+ * Get the server ID from Jira (needed for license generation)
+ */
+async function getServerId(baseUrl: string): Promise<string | null> {
+  // Try REST API first
+  try {
+    const response = await fetch(`${baseUrl}/rest/api/2/serverInfo`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (response.ok) {
+      const info = (await response.json()) as { serverId?: string };
+      if (info.serverId) {
+        console.log(`  Found via API: ${info.serverId}`);
+        return info.serverId;
+      }
+    }
+  } catch {
+    // API not available yet
+  }
+
+  // Try setup page
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      const response = await fetch(`${baseUrl}/secure/SetupLicense!default.jspa`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      const html = await response.text();
+
+      // Look for server ID in various patterns
+      const patterns = [
+        /name="sid"\s+value="([^"]+)"/,
+        /id="serverId"[^>]*value="([^"]+)"/,
+        /data-server-id="([^"]+)"/,
+        /Server\s*ID[:\s]*([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/i,
+        /([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match) {
+          console.log(`  Found via HTML: ${match[1]}`);
+          return match[1];
+        }
+      }
+
+      console.log(`  Attempt ${attempt}/10: Server ID not found yet...`);
+    } catch (error) {
+      console.log(`  Attempt ${attempt}/10: ${(error as Error).message}`);
+    }
+    await sleep(5000);
+  }
+
+  return null;
+}
+
+/**
+ * Generate license using atlassian-agent
+ */
+function generateLicense(serverId: string): string | null {
+  try {
+    const output = exec(
+      `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar ` +
+        `-d -p jira -m test@example.com -n test@example.com -o TestOrg -s ${serverId}`,
+      30000,
+    );
+
+    // Extract license from output
+    const lines = output.trim().split('\n');
+    const licenseLines: string[] = [];
+    let inLicense = false;
+
+    for (const line of lines) {
+      if (line.match(/^[A-Za-z0-9+/=]{20,}$/) || line.startsWith('AAAB')) {
+        inLicense = true;
+      }
+      if (inLicense && line.trim()) {
+        licenseLines.push(line);
+      }
+    }
+
+    if (licenseLines.length > 0) {
+      console.log('✓ License generated');
+      return licenseLines.join('\n');
+    }
+
+    // Return raw output if parsing failed
+    return output.trim();
+  } catch (error) {
+    console.log(`✗ License generation failed: ${(error as Error).message}`);
+    return null;
+  }
+}
+
+/**
+ * Parse Set-Cookie headers and return a Cookie header string
+ */
+function parseCookies(response: Response): string {
+  const cookies: string[] = [];
+
+  // Try getSetCookie() first (Node 18.14.1+)
+  if ('getSetCookie' in response.headers && typeof response.headers.getSetCookie === 'function') {
+    const setCookies = response.headers.getSetCookie();
+    for (const cookie of setCookies) {
+      // Extract just name=value (before the first ;)
+      const nameValue = cookie.split(';')[0].trim();
+      if (nameValue) cookies.push(nameValue);
+    }
+  } else {
+    // Fallback: parse set-cookie header manually
+    const setCookie = response.headers.get('set-cookie');
+    if (setCookie) {
+      // Multiple cookies might be comma-separated (though technically incorrect)
+      // Each cookie's attributes are semicolon-separated
+      // We need to be careful: "expires=Thu, 01 Jan..." contains a comma
+      // Best effort: split on ", " followed by a word that looks like a cookie name
+      const parts = setCookie.split(/,\s*(?=[A-Za-z_][A-Za-z0-9_]*=)/);
+      for (const part of parts) {
+        const nameValue = part.split(';')[0].trim();
+        if (nameValue && nameValue.includes('=')) {
+          cookies.push(nameValue);
+        }
+      }
+    }
+  }
+
+  const cookieHeader = cookies.join('; ');
+  if (cookieHeader) {
+    console.log(`  [DEBUG] Cookies: ${cookieHeader.substring(0, 100)}...`);
+  }
+  return cookieHeader;
+}
+
+/**
+ * Insert license directly into the database (bypasses XSRF issues)
+ */
+function insertLicenseViaDatabase(license: string): boolean {
+  try {
+    // Escape single quotes in the license string for SQL
+    const escapedLicense = license.replace(/'/g, "''");
+
+    // First check if the productlicense table exists
+    const tableExists = execQuiet(
+      `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='jira' AND table_name='productlicense'" 2>/dev/null`,
+    );
+
+    if (!tableExists.trim() || tableExists.trim() === '0') {
+      console.log('  productlicense table does not exist yet');
+      console.log('  Jira schema may not be initialized - checking tables...');
+      const tables = execQuiet(
+        `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='jira'" 2>/dev/null`,
+      );
+      console.log(`  Tables in jira database: ${tables.trim() || '0'}`);
+      return false;
+    }
+
+    // Check if the table has any entries
+    const checkResult = execQuiet(
+      `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM jira.productlicense" 2>/dev/null`,
+    );
+    const existingCount = parseInt(checkResult.trim(), 10);
+
+    if (existingCount > 0) {
+      // Update existing license
+      console.log('  Updating existing license in database...');
+      exec(
+        `docker exec jira-e2e-mysql mysql -uroot -p123456 -e "UPDATE jira.productlicense SET LICENSE='${escapedLicense}' WHERE ID=(SELECT MIN(ID) FROM (SELECT ID FROM jira.productlicense) AS t)" 2>/dev/null`,
+      );
+    } else {
+      // Insert new license
+      console.log('  Inserting license into database...');
+      exec(
+        `docker exec jira-e2e-mysql mysql -uroot -p123456 -e "INSERT INTO jira.productlicense (ID, LICENSE) VALUES (10000, '${escapedLicense}')" 2>/dev/null`,
+      );
+    }
+
+    // Verify the license was inserted
+    const verifyResult = execQuiet(
+      `docker exec jira-e2e-mysql mysql -uroot -p123456 -N -e "SELECT COUNT(*) FROM jira.productlicense WHERE LICENSE IS NOT NULL" 2>/dev/null`,
+    );
+    const verifiedCount = parseInt(verifyResult.trim(), 10);
+
+    if (verifiedCount > 0) {
+      console.log('✓ License inserted into database');
+      return true;
+    }
+
+    console.log('  ✗ License verification failed');
+    return false;
+  } catch (error) {
+    console.log(`  Database license insertion error: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Submit license via HTTP POST with cookie handling (fallback method)
+ */
+async function submitLicenseViaHttp(baseUrl: string, license: string): Promise<boolean> {
+  // Get the license page to extract any tokens and cookies
+  try {
+    const getResponse = await fetch(`${baseUrl}/secure/SetupLicense!default.jspa`, {
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const cookieHeader = parseCookies(getResponse);
+    const html = await getResponse.text();
+
+    // Extract CSRF token
+    let atl_token = '';
+    const tokenMatch = html.match(/name="atl_token"\s+value="([^"]+)"/);
+    if (tokenMatch) {
+      atl_token = tokenMatch[1];
+      console.log(`  [DEBUG] CSRF token: ${atl_token.substring(0, 20)}...`);
+    } else {
+      console.log('  [DEBUG] No CSRF token found in form');
+    }
+
+    // Submit with cookies - use non-browser User-Agent
+    const formData = new URLSearchParams();
+    formData.append('setupLicenseKey', license);
+    if (atl_token) {
+      formData.append('atl_token', atl_token);
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'curl/7.88.1', // Non-browser User-Agent
+      'X-Atlassian-Token': 'no-check',
+    };
+    if (cookieHeader) {
+      headers['Cookie'] = cookieHeader;
+    }
+
+    console.log(`  [DEBUG] Submitting to: ${baseUrl}/secure/SetupLicense.jspa`);
+    const response = await fetch(`${baseUrl}/secure/SetupLicense.jspa`, {
+      method: 'POST',
+      headers,
+      body: formData.toString(),
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30000),
+    });
+
+    console.log(`  [DEBUG] Response status: ${response.status}`);
+    console.log(`  [DEBUG] Response location: ${response.headers.get('location') || 'none'}`);
+
+    if (response.ok || response.status === 302 || response.status === 303) {
+      console.log('✓ License submitted via HTTP');
+      return true;
+    }
+
+    // If 403, show more details
+    if (response.status === 403) {
+      const body = await response.text();
+      console.log(`  [DEBUG] 403 response body (first 500 chars): ${body.substring(0, 500)}`);
+    }
+
+    console.log(`  License submission returned: ${response.status}`);
+    return response.status < 500;
+  } catch (error) {
+    console.log(`  License submission error: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Submit license - tries database first, then falls back to HTTP
+ * Returns { success: boolean, usedDatabase: boolean }
+ */
+async function submitLicense(baseUrl: string, license: string): Promise<{ success: boolean; usedDatabase: boolean }> {
+  // Try database insertion first (more reliable, avoids XSRF issues)
+  console.log('  Trying database insertion method...');
+  if (insertLicenseViaDatabase(license)) {
+    return { success: true, usedDatabase: true };
+  }
+
+  // Fall back to HTTP method
+  console.log('  Database method failed, trying HTTP submission...');
+  const httpSuccess = await submitLicenseViaHttp(baseUrl, license);
+  return { success: httpSuccess, usedDatabase: false };
+}
+
+/**
+ * Restart the Jira container to pick up database changes
+ */
+async function restartJiraContainer(): Promise<boolean> {
+  try {
+    console.log('  Restarting Jira container...');
+    exec(`docker restart ${CONTAINER_NAME}`, 60000);
+    console.log('  Waiting for Jira to restart...');
+    await sleep(10000); // Give it time to start the shutdown/startup cycle
+    return true;
+  } catch (error) {
+    console.log(`  Restart failed: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Complete remaining setup steps via HTTP
+ */
+async function completeSetup(baseUrl: string, username: string, password: string): Promise<boolean> {
+  const steps = [
+    {
+      name: 'App Properties',
+      url: '/secure/SetupApplicationProperties.jspa',
+      data: { title: 'Jira E2E', mode: 'private', baseURL: baseUrl },
+    },
+    {
+      name: 'Admin Account',
+      url: '/secure/SetupAdminAccount.jspa',
+      data: { username, password, confirm: password, fullname: 'Admin', email: 'admin@example.com' },
+    },
+    { name: 'Setup Complete', url: '/secure/SetupComplete.jspa', data: {} },
+  ];
+
+  for (const step of steps) {
+    try {
+      // Get page for cookies/tokens
+      const getResponse = await fetch(`${baseUrl}${step.url.replace('.jspa', '!default.jspa')}`, {
+        headers: { 'User-Agent': 'curl/7.88.1' },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const cookieHeader = parseCookies(getResponse);
+      const html = await getResponse.text();
+
+      // Check if already past this step
+      if (html.includes('Dashboard') || html.includes('login')) {
+        console.log(`  ${step.name}: Already complete`);
+        continue;
+      }
+
+      // Extract CSRF token
+      let atl_token = '';
+      const tokenMatch = html.match(/name="atl_token"\s+value="([^"]+)"/);
+      if (tokenMatch) {
+        atl_token = tokenMatch[1];
+      }
+
+      // Submit with non-browser User-Agent
+      const formData = new URLSearchParams();
+      for (const [key, value] of Object.entries(step.data)) {
+        formData.append(key, value);
+      }
+      if (atl_token) {
+        formData.append('atl_token', atl_token);
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'curl/7.88.1', // Non-browser User-Agent to bypass XSRF checks
+        'X-Atlassian-Token': 'no-check',
+      };
+      if (cookieHeader) {
+        headers['Cookie'] = cookieHeader;
+      }
+
+      const response = await fetch(`${baseUrl}${step.url}`, {
+        method: 'POST',
+        headers,
+        body: formData.toString(),
+        redirect: 'manual',
+        signal: AbortSignal.timeout(30000),
+      });
+
+      console.log(`  ${step.name}: ${response.status}`);
+
+      // If 403, log details
+      if (response.status === 403) {
+        const body = await response.text();
+        console.log(`  [DEBUG] ${step.name} 403 body: ${body.substring(0, 300)}`);
+      }
+    } catch (error) {
+      console.log(`  ${step.name}: ${(error as Error).message}`);
+    }
+
+    await sleep(2000);
+  }
+
+  return true;
+}
+
+/**
+ * Verify Jira is ready for API access
+ */
+async function verifyJiraReady(baseUrl: string, username: string, password: string): Promise<boolean> {
+  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+  let consecutive503 = 0;
+  const maxConsecutive503 = 3; // Fail fast after 3 consecutive 503s
+
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    try {
+      const response = await fetch(`${baseUrl}/rest/api/2/serverInfo`, {
+        headers: { Authorization: authHeader },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (response.ok) {
+        const info = (await response.json()) as { version: string; baseUrl: string };
+        console.log(`✓ Jira API ready! Version: ${info.version}`);
+        return true;
+      }
+
+      console.log(`  Attempt ${attempt}/12: API returned ${response.status}`);
+
+      // Track consecutive 503s and fail fast
+      if (response.status === 503) {
+        consecutive503++;
+        if (consecutive503 >= maxConsecutive503) {
+          console.log(`  ✗ Got ${maxConsecutive503} consecutive 503 errors - Jira setup likely incomplete`);
+          return false;
+        }
+      } else {
+        consecutive503 = 0;
+      }
+    } catch (error) {
+      console.log(`  Attempt ${attempt}/12: ${(error as Error).message}`);
+      consecutive503 = 0;
+    }
+
+    await sleep(5000);
+  }
+
+  return false;
 }
 
 async function setupJira(): Promise<void> {
@@ -23,183 +545,195 @@ async function setupJira(): Promise<void> {
   const username = config.jira.auth.username || 'admin';
   const password = config.jira.auth.password || 'admin';
 
-  console.log('Starting Jira setup wizard automation...');
+  console.log('='.repeat(60));
+  console.log('Jira Setup (Pre-mounted DB Config)');
+  console.log('='.repeat(60));
   console.log(`Base URL: ${baseUrl}`);
+  console.log('');
 
-  // Wait for Jira to be HTTP accessible
-  console.log('Waiting for Jira HTTP to be available...');
-  let httpReady = false;
-  const httpTimeout = 180000; // 3 minutes
-  const httpStart = Date.now();
+  // Step 1: Verify dbconfig.xml is mounted
+  console.log('Step 1: Verifying database config mount...');
+  const dbconfigContent = execQuiet(`docker exec ${CONTAINER_NAME} cat /var/jira/dbconfig.xml 2>&1`);
+  if (dbconfigContent.includes('mysql')) {
+    console.log('  ✓ dbconfig.xml is mounted and contains MySQL config');
+  } else if (dbconfigContent.includes('No such file')) {
+    console.log('  ✗ dbconfig.xml is NOT mounted!');
+    console.log('  Checking /var/jira contents:');
+    console.log(execQuiet(`docker exec ${CONTAINER_NAME} ls -la /var/jira/ 2>&1`));
+  } else {
+    console.log('  ? dbconfig.xml status unclear:');
+    console.log(dbconfigContent.substring(0, 500));
+  }
 
-  while (!httpReady && Date.now() - httpStart < httpTimeout) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(`${baseUrl}/status`, { signal: controller.signal });
-      clearTimeout(timeoutId);
+  // Step 2: Wait for Jira to start
+  console.log('');
+  console.log('Step 2: Waiting for Jira to start...');
+  const recentLogs = getDockerLogs(100);
 
-      if (response.ok) {
-        httpReady = true;
-        console.log('✓ Jira HTTP is available');
-      }
-    } catch (error) {
-      await sleep(5000);
+  if (recentLogs.includes('Jira is ready to serve')) {
+    console.log('  ✓ Jira container is running');
+  } else {
+    const ready = await waitForLogPattern('Jira is ready to serve', 180000);
+    if (!ready) {
+      console.log('✗ Jira did not start');
+      console.log('');
+      console.log('=== Recent Docker Logs ===');
+      console.log(getDockerLogs(50));
+      process.exit(1);
     }
   }
 
+  // Step 3: Wait for HTTP
+  console.log('');
+  console.log('Step 3: Waiting for HTTP...');
+  const httpReady = await waitForHttp(baseUrl, 60000);
   if (!httpReady) {
-    console.error('✗ Jira HTTP did not become available in time');
+    console.log('✗ HTTP not available');
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
+    process.exit(1);
+  }
+  console.log('✓ HTTP is available');
+
+  // Step 4: Check if API is already working (fully configured)
+  console.log('');
+  console.log('Step 4: Checking if already configured...');
+  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+  try {
+    const response = await fetch(`${baseUrl}/rest/api/2/serverInfo`, {
+      headers: { Authorization: authHeader },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.ok) {
+      const info = (await response.json()) as { version: string };
+      console.log(`✓ Jira is already fully configured (version ${info.version})`);
+      console.log('');
+      console.log('='.repeat(60));
+      console.log('✓ Setup complete!');
+      console.log('='.repeat(60));
+      return;
+    }
+  } catch {
+    console.log('  Not yet configured, continuing setup...');
+  }
+
+  // Step 5: Wait for database initialization (mounted config should trigger this)
+  console.log('');
+  console.log('Step 5: Waiting for database initialization...');
+  console.log('  (Database config is pre-mounted via Docker Compose)');
+
+  // Check logs for database connection
+  const dbReady = await waitForLogPattern('Database Connection - OK', 180000);
+  if (dbReady) {
+    console.log('✓ Database initialized');
+  } else {
+    // Check if we're on the license page (DB config might have worked differently)
+    console.log('  Database status unclear, checking license page...');
+  }
+
+  // Step 6: Get server ID
+  console.log('');
+  console.log('Step 6: Getting server ID...');
+  const serverId = await getServerId(baseUrl);
+  if (!serverId) {
+    console.log('✗ Could not get server ID');
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
     process.exit(1);
   }
 
-  // Check if Jira is already set up
-  console.log('Checking if Jira is already configured...');
-  try {
-    const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-    const response = await fetch(`${baseUrl}/rest/api/2/serverInfo`, {
-      headers: { Authorization: authHeader },
-    });
-
-    if (response.ok) {
-      const serverInfo = (await response.json()) as { version: string };
-      console.log(`✓ Jira is already configured (version ${serverInfo.version})`);
-      console.log('Skipping setup wizard');
-      return;
-    }
-  } catch (error) {
-    // Expected if not set up yet
-    console.log('Jira needs to be set up');
+  // Step 7: Generate and submit license
+  console.log('');
+  console.log('Step 7: Generating license...');
+  const license = generateLicense(serverId);
+  if (!license) {
+    console.log('✗ License generation failed');
+    process.exit(1);
   }
 
-  // Perform setup wizard steps
-  console.log('Starting automated setup wizard...');
-
-  // Step 1: Check if setup wizard is accessible
-  try {
-    const setupResponse = await fetch(`${baseUrl}/secure/SetupMode!default.jspa`);
-    if (setupResponse.status === 200) {
-      console.log('✓ Setup wizard is accessible');
-    }
-  } catch (error) {
-    console.log('Note: Setup wizard check failed, continuing...');
+  console.log('');
+  console.log('Step 8: Submitting license...');
+  const licenseResult = await submitLicense(baseUrl, license);
+  if (!licenseResult.success) {
+    console.log(`✗ License submission failed for ${baseUrl}`);
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
+    process.exit(1);
   }
 
-  // Step 2: Configure database (already done via environment variables)
-  console.log('✓ Database configuration is handled via environment variables');
+  // If we used database insertion, restart Jira to pick up the license
+  if (licenseResult.usedDatabase) {
+    console.log('');
+    console.log('Step 8b: Restarting Jira to apply license from database...');
+    await restartJiraContainer();
 
-  // Step 3: Set application properties
-  console.log('Configuring application properties...');
-  const setupSteps: SetupStep[] = [
-    {
-      name: 'Set application properties',
-      url: `${baseUrl}/secure/SetupApplicationProperties.jspa`,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: {
-        title: 'Jira E2E Test',
-        mode: 'private',
-        baseURL: baseUrl,
-      },
-    },
-  ];
-
-  // Step 4: Set up admin account
-  console.log('Setting up admin account...');
-  setupSteps.push({
-    name: 'Create admin user',
-    url: `${baseUrl}/secure/SetupAdminAccount.jspa`,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: {
-      username: username,
-      password: password,
-      confirm: password,
-      fullname: 'Admin User',
-      email: 'admin@example.com',
-    },
-  });
-
-  // Execute setup steps with retry logic
-  for (const step of setupSteps) {
-    console.log(`Executing: ${step.name}...`);
-    let attempts = 0;
-    const maxAttempts = 3;
-
-    while (attempts < maxAttempts) {
-      try {
-        const headers = step.headers || {};
-        let body: string | undefined;
-
-        if (step.body) {
-          if (headers['Content-Type'] === 'application/x-www-form-urlencoded') {
-            body = new URLSearchParams(step.body as Record<string, string>).toString();
-          } else {
-            body = JSON.stringify(step.body);
-            headers['Content-Type'] = 'application/json';
-          }
-        }
-
-        const response = await fetch(step.url, {
-          method: step.method,
-          headers,
-          body,
-        });
-
-        if (response.ok || response.status === 302 || response.status === 303) {
-          console.log(`✓ ${step.name} completed`);
-          break;
-        } else {
-          console.log(`Step returned status ${response.status}, attempting next step...`);
-          break; // Continue to next step even if this one has issues
-        }
-      } catch (error) {
-        attempts++;
-        if (attempts < maxAttempts) {
-          console.log(`Attempt ${attempts} failed, retrying...`);
-          await sleep(2000);
-        } else {
-          console.log(`⚠ ${step.name} failed after ${maxAttempts} attempts, continuing...`);
-        }
-      }
+    // Wait for Jira to come back up
+    console.log('  Waiting for Jira to restart...');
+    const httpReadyAfterRestart = await waitForHttp(baseUrl, 180000);
+    if (!httpReadyAfterRestart) {
+      console.log('✗ Jira did not come back up after restart');
+      console.log('');
+      console.log('=== Recent Docker Logs ===');
+      console.log(getDockerLogs(50));
+      process.exit(1);
     }
+    console.log('✓ Jira is back up');
   }
 
-  console.log('Setup wizard automation complete');
-  console.log('Waiting for services to stabilize...');
-  await sleep(10000); // Wait 10 seconds for changes to take effect
+  // Step 9: Complete remaining setup
+  console.log('');
+  console.log('Step 9: Completing setup...');
+  const setupCompleted = await completeSetup(baseUrl, username, password);
+  if (!setupCompleted) {
+    console.log(`✗ Setup completion failed for ${baseUrl} (user: ${username})`);
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
+    process.exit(1);
+  }
 
-  // Final verification
-  console.log('Verifying Jira is ready...');
-  try {
-    const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-    const response = await fetch(`${baseUrl}/rest/api/2/serverInfo`, {
-      headers: { Authorization: authHeader },
-    });
+  // Step 10: Final verification
+  console.log('');
+  console.log('Step 10: Final verification...');
+  const ready = await verifyJiraReady(baseUrl, username, password);
 
-    if (response.ok) {
-      const serverInfo = (await response.json()) as { version: string };
-      console.log(`✓ Jira is ready! Version: ${serverInfo.version}`);
-    } else {
-      console.log(`⚠ Jira API returned status ${response.status}`);
-      console.log('Note: Manual setup may still be required. Access Jira at', baseUrl);
-    }
-  } catch (error) {
-    console.log('⚠ Could not verify Jira readiness');
-    console.log('Note: Manual setup may still be required. Access Jira at', baseUrl);
+  console.log('');
+  if (ready) {
+    console.log('='.repeat(60));
+    console.log('✓ Jira setup completed successfully!');
+    console.log('='.repeat(60));
+  } else {
+    console.log('='.repeat(60));
+    console.log('✗ Jira setup failed');
+    console.log('='.repeat(60));
+    console.log('');
+    console.log('=== Recent Docker Logs ===');
+    console.log(getDockerLogs(50));
+    process.exit(1);
   }
 }
 
 // Run if called directly
 if (require.main === module) {
-  setupJira().catch((error) => {
-    console.error('Failed to set up Jira:', error);
+  const GLOBAL_TIMEOUT = 300000; // 5 minutes max
+  const timeoutId = setTimeout(() => {
+    console.error('✗ Setup timed out after 5 minutes');
     process.exit(1);
-  });
+  }, GLOBAL_TIMEOUT);
+
+  setupJira()
+    .then(() => {
+      clearTimeout(timeoutId);
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      console.error('Failed to set up Jira:', error);
+      process.exit(1);
+    });
 }
 
 export { setupJira };

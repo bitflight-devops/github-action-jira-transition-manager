@@ -14,13 +14,16 @@ async function waitForJira(): Promise<void> {
   const config = getE2EConfig();
   const client = new JiraE2EClient(config);
   const startTime = Date.now();
-  const timeout = config.timeouts.jiraReady;
+  const timeout = 120000; // 2 minutes max, not 600s
   const pollInterval = 5000; // 5 seconds
 
   console.log(`Waiting for Jira at ${config.jira.baseUrl}...`);
-  console.log(`Timeout: ${timeout / 1000}s`);
+  console.log(`Timeout: ${timeout / 1000}s (fail-fast on repeated errors)`);
 
   let lastError: Error | null = null;
+  let consecutiveSameError = 0;
+  let lastErrorMessage = '';
+  const maxConsecutiveSameError = 6; // 30 seconds of same error = fail
 
   while (Date.now() - startTime < timeout) {
     try {
@@ -33,6 +36,11 @@ async function waitForJira(): Promise<void> {
       });
 
       clearTimeout(timeoutId);
+
+      if (response.status === 503) {
+        console.error('✗ Jira returned 503');
+        process.exit(1);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP status: ${response.status}`);
@@ -52,7 +60,22 @@ async function waitForJira(): Promise<void> {
     } catch (error) {
       lastError = error as Error;
       const elapsed = Math.round((Date.now() - startTime) / 1000);
-      console.log(`⏳ Waiting... (${elapsed}s/${timeout / 1000}s) - ${lastError.message}`);
+      const errorMsg = lastError.message;
+
+      // Track consecutive same errors for fail-fast
+      if (errorMsg === lastErrorMessage) {
+        consecutiveSameError++;
+        if (consecutiveSameError >= maxConsecutiveSameError) {
+          console.error(`✗ Same error ${consecutiveSameError} times in a row - failing fast`);
+          console.error(`Error: ${errorMsg}`);
+          process.exit(1);
+        }
+      } else {
+        consecutiveSameError = 1;
+        lastErrorMessage = errorMsg;
+      }
+
+      console.log(`⏳ Waiting... (${elapsed}s/${timeout / 1000}s) - ${errorMsg}`);
       await sleep(pollInterval);
     }
   }
