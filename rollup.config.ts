@@ -15,6 +15,18 @@ const config = {
     format: 'es',
     sourcemap: true,
   },
+  // Suppress known warnings from dependencies
+  onwarn(warning, warn) {
+    // Ignore circular dependency warning from @actions/core (known issue in GitHub's package)
+    if (warning.code === 'CIRCULAR_DEPENDENCY' && warning.ids?.some((id) => id.includes('@actions/core'))) {
+      return;
+    }
+    // Ignore "this" rewritten to "undefined" in node_modules (common in CJS packages)
+    if (warning.code === 'THIS_IS_UNDEFINED' && warning.id?.includes('node_modules')) {
+      return;
+    }
+    warn(warning);
+  },
   plugins: [
     typescript({
       tsconfig: './tsconfig.json',

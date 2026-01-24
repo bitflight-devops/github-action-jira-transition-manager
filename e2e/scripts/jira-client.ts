@@ -85,6 +85,8 @@ export interface JiraSearchResult {
 
 export class JiraE2EClient {
   private client: Version2Client;
+  private baseUrl: string;
+  private authHeader: string;
 
   constructor(config: E2EConfig) {
     // jira.js uses email/apiToken field names for basic auth
@@ -92,12 +94,66 @@ export class JiraE2EClient {
     const email = config.jira.auth.email || config.jira.auth.username || '';
     const apiToken = config.jira.auth.apiToken || config.jira.auth.password || '';
 
+    this.baseUrl = config.jira.baseUrl;
     this.client = new Version2Client({
       host: config.jira.baseUrl,
       authentication: {
         basic: { email, apiToken },
       },
     });
+
+    // Store auth header for raw API calls (needed for Data Center project creation)
+    // jira.js doesn't support the 'lead' field required by Data Center
+    this.authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+  }
+
+  /**
+   * Create a project with the appropriate lead field for Cloud vs Data Center
+   *
+   * jira.js library only supports 'leadAccountId' (Cloud) and filters out 'lead' (Data Center).
+   * This method uses native fetch for Data Center to send the 'lead' field directly.
+   */
+  private async createProjectWithLead(
+    basePayload: { key: string; name: string; projectTypeKey: string; projectTemplateKey: string },
+    isCloud: boolean,
+    leadIdentifier: string,
+  ): Promise<{ id?: number; key?: string }> {
+    if (isCloud) {
+      // Cloud: use jira.js which supports leadAccountId
+      return this.client.projects.createProject({
+        ...basePayload,
+        leadAccountId: leadIdentifier,
+      } as any);
+    }
+
+    // Data Center: use native fetch because jira.js filters out the 'lead' field
+    // The 'lead' field expects a username string (e.g., 'admin'), not a user key (e.g., 'JIRAUSER10000')
+    const response = await fetch(`${this.baseUrl}/rest/api/2/project`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: this.authHeader,
+      },
+      body: JSON.stringify({ ...basePayload, lead: leadIdentifier }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as {
+        errorMessages?: string[];
+        errors?: Record<string, string>;
+      };
+      const errorMsg = errorData.errorMessages?.join(', ') || response.statusText;
+      const fieldErrors = errorData.errors
+        ? Object.entries(errorData.errors)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ')
+        : '';
+      throw new Error(
+        `Request failed with status code ${response.status}${fieldErrors ? ` | Fields: ${fieldErrors}` : ''}${errorMsg ? ` | ${errorMsg}` : ''}`,
+      );
+    }
+
+    return (await response.json()) as { id?: number; key?: string };
   }
 
   /**
@@ -162,8 +218,8 @@ export class JiraE2EClient {
       let userInfo: { accountId?: string; name?: string; key?: string; isCloud: boolean };
       try {
         userInfo = await this.getCurrentUserInfo();
-        // For Data Center, prefer 'key' over 'name' as some Jira instances use key for project lead
-        const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.key || userInfo.name;
+        // For Data Center, use 'name' (username) - Jira REST API expects username, not internal key
+        const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
 
         // Validate we have the required identifier
         if (!identifier) {
@@ -191,15 +247,13 @@ export class JiraE2EClient {
         projectTemplateKey: PROJECT_TEMPLATES.SOFTWARE_SCRUM,
       };
 
-      // Cloud uses leadAccountId, Data Center uses lead (key or username)
-      // Prefer 'key' over 'name' for Data Center as some instances use key for project lead
-      const projectPayload = userInfo.isCloud
-        ? { ...basePayload, leadAccountId: userInfo.accountId! }
-        : { ...basePayload, lead: userInfo.key || userInfo.name! };
-
       // Try software project first - it supports fixVersions
       try {
-        const project = await this.client.projects.createProject(projectPayload as any);
+        const project = await this.createProjectWithLead(
+          { ...basePayload },
+          userInfo.isCloud,
+          userInfo.isCloud ? userInfo.accountId! : userInfo.name!,
+        );
         console.log(`  Created software project ${key}`);
         return {
           id: project.id?.toString() || '',
@@ -214,19 +268,18 @@ export class JiraE2EClient {
 
         // Fall back to business type
         try {
-          // Use Core business template for business projects
-          const businessTemplatePayload = {
+          const businessPayload = {
             key,
             name,
             projectTypeKey: 'business' as const,
             projectTemplateKey: PROJECT_TEMPLATES.BUSINESS_CORE,
           };
 
-          const businessPayload = userInfo.isCloud
-            ? { ...businessTemplatePayload, leadAccountId: userInfo.accountId! }
-            : { ...businessTemplatePayload, lead: userInfo.name! };
-
-          const project = await this.client.projects.createProject(businessPayload as any);
+          const project = await this.createProjectWithLead(
+            businessPayload,
+            userInfo.isCloud,
+            userInfo.isCloud ? userInfo.accountId! : userInfo.name!,
+          );
           console.log(`  Created business project ${key}`);
           return {
             id: project.id?.toString() || '',
