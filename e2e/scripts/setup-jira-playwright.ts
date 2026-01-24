@@ -138,7 +138,7 @@ async function main() {
   // Step 1: Wait for Jira to start
   console.log('Step 1: Waiting for Jira to start...');
   console.log(`  Container: ${CONTAINER_NAME}`);
-  console.log('  Timeout: 300s (5 minutes)');
+  console.log('  Timeout: 120s (expect ~15s, fail-fast on errors)');
 
   // Verify container exists
   const containerCheck = execQuiet(`docker ps --format '{{.Names}}' | grep -w ${CONTAINER_NAME}`);
