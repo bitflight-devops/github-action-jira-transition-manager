@@ -151,23 +151,39 @@ yarn build:e2e # Build only E2E scripts
 
 ## Development Guidelines
 
+### Before Committing Playwright Code
+
+**MANDATORY**: Before committing changes to any Playwright file, run these checks:
+
+```bash
+# Check for page.click() with multi-selectors (needs .first())
+grep -n "page\.click(" e2e/scripts/*.ts | grep -v "\.first()"
+
+# Check for getByText with string literals (should use regex /text/i)
+grep -n "getByText(['\"]" e2e/scripts/*.ts
+
+# Check for locator().click() without .first() on multi-selectors
+grep -n "\.locator(" e2e/scripts/*.ts | grep "," | grep -v "\.first()"
+```
+
+If any matches are found, fix them before committing.
+
 ### When Fixing Bugs
 
 When you find and fix a bug, always:
 
 1. **Search for similar patterns** - Use grep/glob to find other instances of the same anti-pattern
 2. **Fix all occurrences** - Don't just fix the one that failed, fix all similar issues
-3. **Document the pattern** - If it's a recurring issue, add it to a checklist below
+3. **Add grep commands above** - If it's a detectable pattern, add a check command
 
-### Common Playwright Issues (Checklist)
+### Common Playwright Issues (Reference)
 
-When writing or reviewing Playwright code, check for:
-
-- [ ] **Multi-element selectors without `.first()`** - `page.click('a, b')` fails if both match
-- [ ] **Case-sensitive text matching** - Use regex `/text/i` instead of exact strings
-- [ ] **Ambiguous selectors** - Multiple elements with same name (visible + hidden)
-- [ ] **Missing `.catch()` on `.isVisible()`** - Can throw if element doesn't exist
-- [ ] **Hardcoded timeouts** - Use `waitForLoadState` or `waitForSelector` instead
+| Issue               | Bad                           | Good                                   |
+| ------------------- | ----------------------------- | -------------------------------------- |
+| Multi-element click | `page.click('a, b')`          | `page.locator('a, b').first().click()` |
+| Case-sensitive text | `getByText('Setup')`          | `getByText(/setup/i)`                  |
+| Ambiguous selector  | `locator('#id')` when 2 exist | `locator('textarea#id')` specific      |
+| Uncaught isVisible  | `.isVisible()`                | `.isVisible().catch(() => false)`      |
 
 ## Links
 
