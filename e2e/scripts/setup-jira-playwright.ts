@@ -406,26 +406,26 @@ async function main() {
       }
 
       // Now navigate to get the admin setup form (goto is more reliable than reload after restart)
-      console.log('  Reloading page to get admin setup form...');
+      console.log('  Navigating to admin setup form...');
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await page.waitForTimeout(2000);
+          await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
           break;
         } catch (navError) {
           console.log(`  Navigation attempt ${attempt + 1} failed: ${(navError as Error).message.split('\n')[0]}`);
           if (attempt === 2) throw navError;
-          await page.waitForTimeout(3000);
+          await page.waitForTimeout(5000);
         }
       }
 
-      // Verify admin page is ready
+      // Wait for admin page to be ready (password field visible) - up to 60s
+      console.log('  Waiting for admin setup form to appear...');
       const passwordField = page.locator('input[name="password"], input#password');
-      const adminPageReady = (await passwordField.count()) > 0 && (await passwordField.first().isVisible());
-      if (!adminPageReady) {
-        console.log('  Admin page not immediately visible, trying one more navigation...');
-        await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForTimeout(3000);
+      try {
+        await passwordField.first().waitFor({ state: 'visible', timeout: 60000 });
+        console.log('  Admin setup form ready');
+      } catch {
+        console.log('  Admin form not visible after 60s, continuing anyway...');
       }
 
       await logPageState(page, 'after-license-submit');
