@@ -246,10 +246,9 @@ async function main() {
     console.log(`  Current URL: ${currentUrl}`);
     console.log(`  Current title: ${currentTitle}`);
 
-    // Check if we're on the license page - try multiple selectors
-    const licenseTextarea = page.locator(
-      'textarea[name="licenseKey"], textarea[name="setupLicenseKey"], #setupLicenseKey',
-    );
+    // Check if we're on the license page - use specific textarea selector
+    // Note: Page has both textarea#licenseKey and input#setupLicenseKey, we want the visible textarea
+    const licenseTextarea = page.locator('textarea[name="licenseKey"]');
     const hasLicensePage = (await licenseTextarea.count()) > 0;
 
     // Also check for license-related text in page
