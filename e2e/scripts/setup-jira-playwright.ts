@@ -67,6 +67,73 @@ async function waitForNavigation(page: Page, fromUrl: string, timeout = 30000): 
   return false;
 }
 
+/**
+ * Watch Docker logs for plugin system restart completion
+ * This happens after license submission and takes ~35 seconds
+ *
+ * Sequence to watch for:
+ * 1. "Starting the JIRA Plugin System" - restart initiated
+ * 2. "Plugin System Started" - restart complete, admin page ready
+ */
+function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?: string } {
+  const startTime = Date.now();
+
+  // Patterns to track progress
+  const startingPattern = /Starting the JIRA Plugin System/i;
+  const readyPattern = /Plugin System Started/i;
+
+  // Error patterns - fail fast
+  const errorPatterns = [
+    { pattern: /FATAL|ERROR.*Exception/i, msg: 'Fatal error during restart' },
+    { pattern: /OutOfMemoryError/i, msg: 'Out of memory' },
+    { pattern: /Unable to start/i, msg: 'Startup failure' },
+  ];
+
+  let seenStarting = false;
+  let lastLogLine = '';
+
+  while (Date.now() - startTime < timeoutMs) {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -100`);
+
+    // Check for errors first
+    for (const { pattern, msg } of errorPatterns) {
+      if (pattern.test(logs)) {
+        console.log(`  [${elapsed}s] ✗ ${msg}`);
+        return { ready: false, error: msg };
+      }
+    }
+
+    // Check for "Starting" pattern
+    if (!seenStarting && startingPattern.test(logs)) {
+      seenStarting = true;
+      console.log(`  [${elapsed}s] ⏳ Plugin System restart initiated...`);
+    }
+
+    // Check for "Started" pattern - success!
+    if (readyPattern.test(logs)) {
+      console.log(`  [${elapsed}s] ✓ Plugin System Started`);
+      return { ready: true };
+    }
+
+    // Show latest unique log line for progress
+    const lines = logs.split('\n').filter((l) => l.trim());
+    const latest = lines[lines.length - 1] || '';
+    if (latest !== lastLogLine && latest.length > 10) {
+      lastLogLine = latest;
+      // Show progress every 5 seconds, or if it's a notable line
+      if (elapsed % 5 === 0 || latest.includes('Plugin') || latest.includes('Starting')) {
+        const shortLine = latest.substring(0, 100);
+        console.log(`  [${elapsed}s] ${shortLine}`);
+      }
+    }
+
+    execSync('sleep 2');
+  }
+
+  return { ready: false, error: 'Timeout waiting for plugin system restart' };
+}
+
 function exec(cmd: string, timeout = 30000): string {
   return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 }
@@ -356,25 +423,28 @@ async function main() {
       await page.waitForLoadState('networkidle');
 
       // IMPORTANT: Jira restarts its plugin system after license submission
-      // This takes ~35 seconds. We need to wait for the admin setup page to appear.
-      console.log('  Waiting for admin setup page (Jira plugin restart takes ~35s)...');
-      let adminPageReady = false;
-      for (let i = 0; i < 20; i++) {
-        // Check if we're on the admin setup page
-        const passwordField = page.locator('input[name="password"], input#password');
-        if ((await passwordField.count()) > 0 && (await passwordField.first().isVisible())) {
-          console.log(`  Admin setup page ready after ${i * 3}s`);
-          adminPageReady = true;
-          break;
-        }
-        console.log(`  [${i * 3}s] Waiting for admin page...`);
-        await page.waitForTimeout(3000);
-        // Refresh to get updated page state
-        await page.reload({ waitUntil: 'networkidle' });
+      // This takes ~35 seconds. Watch Docker logs for completion instead of blind polling.
+      console.log('  Waiting for Jira plugin system restart (~35s)...');
+      console.log('  Watching Docker logs for "Plugin System Started" pattern...');
+
+      const restartResult = waitForPluginSystemRestart(90000); // 90s max
+      if (!restartResult.ready) {
+        console.log(`  ⚠ Plugin restart wait: ${restartResult.error || 'Unknown error'}`);
+        console.log('  Continuing anyway - page may still work...');
       }
 
+      // Now reload the page to get the admin setup form
+      console.log('  Reloading page to get admin setup form...');
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+
+      // Verify admin page is ready
+      const passwordField = page.locator('input[name="password"], input#password');
+      const adminPageReady = (await passwordField.count()) > 0 && (await passwordField.first().isVisible());
       if (!adminPageReady) {
-        console.log('  Admin page did not appear after 60s');
+        console.log('  Admin page not immediately visible, trying one more reload...');
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForTimeout(3000);
       }
 
       await logPageState(page, 'after-license-submit');
