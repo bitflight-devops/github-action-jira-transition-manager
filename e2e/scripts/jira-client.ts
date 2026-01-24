@@ -76,21 +76,43 @@ export class JiraE2EClient {
   }
 
   /**
+   * Get current user's account ID for use in API calls
+   * Returns accountId for Jira Cloud, key for Jira Data Center
+   */
+  async getCurrentUserAccountId(): Promise<string> {
+    const user = await this.client.myself.getCurrentUser();
+    // Jira Cloud uses accountId, Data Center uses key
+    // Both fields should be present, prefer accountId for Cloud, fall back to key for Data Center
+    return user.accountId || user.key || user.name || 'admin';
+  }
+
+  /**
    * Get or create a project
    */
   async ensureProject(key: string, name: string): Promise<JiraProject> {
     try {
       // Try to get existing project
       const project = await this.client.projects.getProject({ projectIdOrKey: key });
+      console.log(`  Project ${key} already exists`);
       return {
         id: project.id || '',
         key: project.key || key,
         name: project.name || name,
         projectTypeKey: project.projectTypeKey || 'software',
       };
-    } catch {
+    } catch (getError) {
       // Project doesn't exist, create it
-      const lead = this.config.jira.auth.username || this.config.jira.auth.email || 'admin';
+      console.log(`  Project ${key} does not exist, creating...`);
+
+      // Get the current user's account ID (accountId for Cloud, key for Data Center)
+      let leadAccountId: string;
+      try {
+        leadAccountId = await this.getCurrentUserAccountId();
+        console.log(`  Using lead account ID: ${leadAccountId}`);
+      } catch (userError) {
+        console.error(`  Failed to get current user account ID: ${(userError as Error).message}`);
+        throw new Error(`Cannot create project: Unable to determine lead account ID - ${(userError as Error).message}`);
+      }
 
       // Try software project first - it supports fixVersions
       try {
@@ -98,29 +120,42 @@ export class JiraE2EClient {
           key,
           name,
           projectTypeKey: 'software',
-          leadAccountId: lead,
+          leadAccountId,
         });
+        console.log(`  Created software project ${key}`);
         return {
           id: project.id?.toString() || '',
           key: project.key || key,
           name: name,
           projectTypeKey: 'software',
         };
-      } catch {
-        console.log(`  Note: Software project failed, trying business type`);
+      } catch (softwareError) {
+        const errorMsg = (softwareError as Error).message || String(softwareError);
+        console.log(`  Software project creation failed: ${errorMsg}`);
+        console.log(`  Trying business project type...`);
+
         // Fall back to business type
-        const project = await this.client.projects.createProject({
-          key,
-          name,
-          projectTypeKey: 'business',
-          leadAccountId: lead,
-        });
-        return {
-          id: project.id?.toString() || '',
-          key: project.key || key,
-          name: name,
-          projectTypeKey: 'business',
-        };
+        try {
+          const project = await this.client.projects.createProject({
+            key,
+            name,
+            projectTypeKey: 'business',
+            leadAccountId,
+          });
+          console.log(`  Created business project ${key}`);
+          return {
+            id: project.id?.toString() || '',
+            key: project.key || key,
+            name: name,
+            projectTypeKey: 'business',
+          };
+        } catch (businessError) {
+          const businessErrorMsg = (businessError as Error).message || String(businessError);
+          console.error(`  Business project creation also failed: ${businessErrorMsg}`);
+          throw new Error(
+            `Failed to create project ${key}: Software type failed (${errorMsg}), Business type failed (${businessErrorMsg})`,
+          );
+        }
       }
     }
   }
@@ -283,35 +318,75 @@ export class JiraE2EClient {
    */
   async configureScreensForFixVersions(): Promise<void> {
     try {
+      console.log('  Fetching screens...');
       // Get all screens
       const screensResult = await this.client.screens.getScreens({});
-      const screens = screensResult.values || [];
+
+      // Validate the response structure
+      if (!screensResult || typeof screensResult !== 'object') {
+        console.log(`  Note: Unexpected screens response format: ${typeof screensResult}`);
+        return;
+      }
+
+      // The API response should have a 'values' array
+      const screens = Array.isArray(screensResult.values) ? screensResult.values : [];
+
+      if (screens.length === 0) {
+        console.log('  No screens found or screens.values is empty');
+        return;
+      }
+
+      console.log(`  Found ${screens.length} screens, adding fixVersions field...`);
 
       for (const screen of screens) {
-        if (!screen.id) continue;
-
-        // Get tabs for this screen
-        const tabs = await this.client.screenTabs.getAllScreenTabs({ screenId: screen.id });
-
-        if (tabs.length === 0) continue;
-
-        // Try to add fixVersions to the first tab
-        const tabId = tabs[0].id;
-        if (!tabId) continue;
+        if (!screen.id) {
+          console.log(`  Skipping screen without ID: ${screen.name || 'unknown'}`);
+          continue;
+        }
 
         try {
-          await this.client.screenTabFields.addScreenTabField({
-            screenId: screen.id,
-            tabId,
-            fieldId: 'fixVersions',
-          });
-          console.log(`  Added fixVersions to screen: ${screen.name}`);
-        } catch {
-          // Field might already exist on this screen, that's fine
+          // Get tabs for this screen
+          const tabs = await this.client.screenTabs.getAllScreenTabs({ screenId: screen.id });
+
+          if (tabs.length === 0) {
+            console.log(`  No tabs found for screen: ${screen.name}`);
+            continue;
+          }
+
+          // Try to add fixVersions to the first tab
+          const tabId = tabs[0].id;
+          if (!tabId) {
+            console.log(`  First tab has no ID for screen: ${screen.name}`);
+            continue;
+          }
+
+          try {
+            await this.client.screenTabFields.addScreenTabField({
+              screenId: screen.id,
+              tabId,
+              fieldId: 'fixVersions',
+            });
+            console.log(`  ✓ Added fixVersions to screen: ${screen.name}`);
+          } catch (addError) {
+            // Field might already exist on this screen, that's fine
+            const errorMsg = (addError as Error).message || String(addError);
+            if (errorMsg.includes('already') || errorMsg.includes('exist')) {
+              console.log(`  - fixVersions already on screen: ${screen.name}`);
+            } else {
+              console.log(`  Could not add fixVersions to screen ${screen.name}: ${errorMsg}`);
+            }
+          }
+        } catch (tabError) {
+          console.log(`  Could not get tabs for screen ${screen.name}: ${(tabError as Error).message}`);
         }
       }
     } catch (error) {
-      console.log(`  Note: Could not configure screens (${(error as Error).message})`);
+      const errorMsg = (error as Error).message || String(error);
+      console.log(`  Note: Could not configure screens: ${errorMsg}`);
+      // Log more details for debugging
+      if (error instanceof Error && error.stack) {
+        console.log(`  Stack trace: ${error.stack.split('\n').slice(0, 3).join('\n')}`);
+      }
     }
   }
 

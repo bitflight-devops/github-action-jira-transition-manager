@@ -14,33 +14,42 @@ async function seedJira(): Promise<void> {
 
   try {
     // 1. Configure screens to include fixVersions field
-    console.log('Configuring screens for fixVersions...');
-    await client.configureScreensForFixVersions();
-    console.log('✓ Screen configuration complete');
+    console.log('\n1. Configuring screens for fixVersions...');
+    try {
+      await client.configureScreensForFixVersions();
+      console.log('✓ Screen configuration complete');
+    } catch (error) {
+      console.error(`✗ Screen configuration failed: ${(error as Error).message}`);
+      // Don't fail the entire seeding if screens fail - continue with project creation
+    }
 
     // 2. Ensure project exists
-    console.log(`Ensuring project ${config.test.projectKey} exists...`);
+    console.log(`\n2. Ensuring project ${config.test.projectKey} exists...`);
     const project = await client.ensureProject(config.test.projectKey, config.test.projectName);
-    console.log(`✓ Project: ${project.key} - ${project.name}`);
+    console.log(`✓ Project: ${project.key} - ${project.name} (Type: ${project.projectTypeKey})`);
 
     // 3. Ensure initial version exists
-    console.log(`Ensuring version ${config.test.initialVersion} exists...`);
+    console.log(`\n3. Ensuring version ${config.test.initialVersion} exists...`);
     const version = await client.ensureVersion(config.test.projectKey, config.test.initialVersion);
     console.log(`✓ Version: ${version.name} (ID: ${version.id})`);
 
-    // 3. Ensure test issue exists
-    console.log('Ensuring test issue exists...');
+    // 4. Ensure test issue exists
+    console.log('\n4. Ensuring test issue exists...');
     const issue = await client.ensureIssue(config.test.projectKey, 'E2E Test Issue', config.test.issueType, [
       config.test.initialVersion,
     ]);
     console.log(`✓ Issue: ${issue.key} - ${issue.fields.summary}`);
 
-    console.log('\n✓ Seeding complete!');
-    console.log(`Project: ${project.key}`);
-    console.log(`Initial Version: ${version.name}`);
-    console.log(`Test Issue: ${issue.key}`);
+    console.log('\n✅ Seeding complete!');
+    console.log(`   Project: ${project.key}`);
+    console.log(`   Initial Version: ${version.name}`);
+    console.log(`   Test Issue: ${issue.key}`);
   } catch (error) {
-    console.error('✗ Seeding failed:', error);
+    console.error('\n❌ Seeding failed!');
+    console.error(`   Error: ${(error as Error).message}`);
+    if (error instanceof Error && error.stack) {
+      console.error(`   Stack: ${error.stack.split('\n').slice(0, 5).join('\n')}`);
+    }
     throw error;
   }
 }
