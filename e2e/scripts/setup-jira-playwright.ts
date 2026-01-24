@@ -10,6 +10,62 @@ const JIRA_URL = process.env.JIRA_URL || 'http://localhost:8080';
 const CONTAINER_NAME = process.env.JIRA_CONTAINER || 'jira-e2e';
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'admin';
+const SCREENSHOT_DIR = '/tmp/jira-setup';
+
+import { Page } from 'playwright';
+
+/**
+ * Log page state for debugging - call this before any action that might fail
+ */
+async function logPageState(page: Page, stepName: string): Promise<void> {
+  const url = page.url();
+  const title = await page.title();
+  console.log(`  [${stepName}] URL: ${url}`);
+  console.log(`  [${stepName}] Title: ${title}`);
+
+  // Take screenshot
+  const screenshotPath = `${SCREENSHOT_DIR}/${stepName.replace(/\s+/g, '-').toLowerCase()}.png`;
+  await page.screenshot({ path: screenshotPath });
+  console.log(`  [${stepName}] Screenshot: ${screenshotPath}`);
+}
+
+/**
+ * Dump all form inputs on the page
+ */
+async function dumpFormInputs(page: Page): Promise<string[]> {
+  const inputs = await page.locator('input, textarea, select').all();
+  const names: string[] = [];
+
+  for (const input of inputs) {
+    const name = await input.getAttribute('name');
+    const id = await input.getAttribute('id');
+    const type = await input.getAttribute('type');
+    const visible = await input.isVisible();
+    if (name || id) {
+      const label = name || id || 'unnamed';
+      names.push(label);
+      console.log(`    - ${label} (type=${type}, visible=${visible})`);
+    }
+  }
+  return names;
+}
+
+/**
+ * Wait for URL to change from current, with logging
+ */
+async function waitForNavigation(page: Page, fromUrl: string, timeout = 30000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const currentUrl = page.url();
+    if (currentUrl !== fromUrl) {
+      console.log(`  Navigation: ${fromUrl} -> ${currentUrl}`);
+      return true;
+    }
+    await page.waitForTimeout(500);
+  }
+  console.log(`  Navigation timeout: still on ${fromUrl}`);
+  return false;
+}
 
 function exec(cmd: string, timeout = 30000): string {
   return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
@@ -133,7 +189,11 @@ async function main() {
   console.log('Jira Setup (Playwright Browser Automation)');
   console.log('============================================================');
   console.log(`Base URL: ${JIRA_URL}`);
+  console.log(`Screenshots: ${SCREENSHOT_DIR}`);
   console.log('');
+
+  // Create screenshot directory
+  execQuiet(`mkdir -p ${SCREENSHOT_DIR}`);
 
   // Step 1: Wait for Jira to start
   console.log('Step 1: Waiting for Jira to start...');
@@ -285,12 +345,19 @@ async function main() {
       // Fill license
       console.log('  Submitting license...');
       await licenseTextarea.fill(license);
+      const beforeLicenseUrl = page.url();
+      await logPageState(page, 'before-license-submit');
+
       await page.locator('button:has-text("Next"), input[type="submit"], #setupLicenseButton').first().click();
-      console.log('  Waiting for page to load after license submission...');
+      console.log('  Clicked submit, waiting for navigation...');
+
+      // Wait for URL to change (indicates page transition)
+      await waitForNavigation(page, beforeLicenseUrl, 60000);
       await page.waitForLoadState('networkidle');
-      // Give extra time for Jira to process the license
-      await page.waitForTimeout(3000);
-      console.log('  License submitted, URL: ' + page.url());
+
+      await logPageState(page, 'after-license-submit');
+      console.log('  Form inputs on new page:');
+      await dumpFormInputs(page);
     } else {
       console.log('  License page not found');
       await page.screenshot({ path: '/tmp/jira-no-license-page.png' });
@@ -302,34 +369,38 @@ async function main() {
 
     // Step 6: Handle Admin Account creation
     console.log('Step 6: Creating Admin Account...');
-    await page.waitForTimeout(2000);
+    await logPageState(page, 'step6-start');
 
-    // Debug: Log where we are after license submission
-    const step6Url = page.url();
-    const step6Title = await page.title();
-    console.log(`  Current URL: ${step6Url}`);
-    console.log(`  Current title: ${step6Title}`);
+    // List all form inputs to understand what's on the page
+    console.log('  Available form inputs:');
+    const inputNames = await dumpFormInputs(page);
 
-    // Check for admin form - try multiple possible field names
-    const usernameInput = page.locator(
-      'input[name="username"], input[name="fullname"], input#fullname, input#username',
-    );
-    const hasAdminPage = (await usernameInput.count()) > 0;
+    // Check for admin form fields by looking for password-related inputs
+    const hasPasswordField = inputNames.some((n) => n.toLowerCase().includes('password'));
+    const hasUsernameField = inputNames.some((n) => n.toLowerCase().includes('username'));
+    const hasFullnameField = inputNames.some((n) => n.toLowerCase().includes('fullname'));
 
-    console.log(`  Admin form fields found: ${hasAdminPage}`);
+    console.log(`  Has password field: ${hasPasswordField}`);
+    console.log(`  Has username field: ${hasUsernameField}`);
+    console.log(`  Has fullname field: ${hasFullnameField}`);
 
-    if (hasAdminPage) {
-      // Try to fill username if it exists
-      const usernameField = page.locator('input[name="username"], input#username');
-      if ((await usernameField.count()) > 0) {
-        await usernameField.first().fill(ADMIN_USER);
+    if (hasPasswordField) {
+      console.log('  Filling admin account form...');
+
+      // Fill fields that exist
+      if (hasUsernameField) {
+        await page.locator('input[name="username"], input#username').first().fill(ADMIN_USER);
       }
-      await page.fill('input[name="password"], input#password', ADMIN_PASS);
-      await page.fill('input[name="confirm"], input#confirm', ADMIN_PASS);
 
-      const fullnameField = page.locator('input[name="fullname"], input#fullname');
-      if ((await fullnameField.count()) > 0) {
-        await fullnameField.first().fill('Administrator');
+      await page.locator('input[name="password"], input#password').first().fill(ADMIN_PASS);
+
+      const confirmField = page.locator('input[name="confirm"], input#confirm');
+      if ((await confirmField.count()) > 0) {
+        await confirmField.first().fill(ADMIN_PASS);
+      }
+
+      if (hasFullnameField) {
+        await page.locator('input[name="fullname"], input#fullname').first().fill('Administrator');
       }
 
       const emailField = page.locator('input[name="email"], input#email');
@@ -337,21 +408,14 @@ async function main() {
         await emailField.first().fill('admin@example.com');
       }
 
+      await logPageState(page, 'step6-before-submit');
       await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
       await page.waitForLoadState('networkidle');
+      await logPageState(page, 'step6-after-submit');
       console.log('  Admin account created');
     } else {
-      console.log('  Admin page not found - taking screenshot for debugging');
-      await page.screenshot({ path: '/tmp/jira-no-admin-page.png' });
-
-      // Log page content to understand what we're seeing
-      const step6Content = await page.content();
-      const formInputs = step6Content.match(/<input[^>]*name="[^"]*"[^>]*>/gi) || [];
-      console.log(`  Form inputs found: ${formInputs.length}`);
-      formInputs.slice(0, 5).forEach((input) => {
-        const nameMatch = input.match(/name="([^"]*)"/);
-        if (nameMatch) console.log(`    - ${nameMatch[1]}`);
-      });
+      console.log('  No password field found - not on admin setup page');
+      console.log('  This could mean: already configured, or on a different page');
     }
     console.log('');
 
