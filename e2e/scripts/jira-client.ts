@@ -6,6 +6,10 @@ import { Version2Client, Version2Models } from 'jira.js';
 
 import { E2EConfig } from './e2e-config';
 
+// Constants for formatting and logging
+const MIN_ID_LENGTH_FOR_MASKING = 8;
+const STACK_TRACE_LINES = 3;
+
 export interface JiraProject {
   id: string;
   key: string;
@@ -116,7 +120,7 @@ export class JiraE2EClient {
       try {
         leadAccountId = await this.getCurrentUserAccountId();
         // Log only first/last 4 chars to avoid exposing full account ID
-        const maskedId = leadAccountId.length > 8 
+        const maskedId = leadAccountId.length > MIN_ID_LENGTH_FOR_MASKING 
           ? `${leadAccountId.substring(0, 4)}...${leadAccountId.substring(leadAccountId.length - 4)}`
           : leadAccountId;
         console.log(`  Using lead account ID: ${maskedId}`);
@@ -396,7 +400,8 @@ export class JiraE2EClient {
       console.log(`  Note: Could not configure screens: ${errorMsg}`);
       // Log more details for debugging
       if (error instanceof Error && error.stack) {
-        console.log(`  Stack trace: ${error.stack.split('\n').slice(0, 3).join('\n')}`);
+        const stackLines = error.stack.split('\n').slice(0, STACK_TRACE_LINES);
+        console.log(`  Stack trace:\n    ${stackLines.join('\n    ')}`);
       }
     }
   }

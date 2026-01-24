@@ -51,7 +51,8 @@ async function seedJira(): Promise<void> {
     console.error('\n❌ Seeding failed!');
     console.error(`   Error: ${(error as Error).message}`);
     if (error instanceof Error && error.stack) {
-      console.error(`   Stack: ${error.stack.split('\n').slice(0, STACK_TRACE_LINES).join('\n')}`);
+      const stackLines = error.stack.split('\n').slice(0, STACK_TRACE_LINES);
+      console.error(`   Stack:\n     ${stackLines.join('\n     ')}`);
     }
     throw error;
   }
