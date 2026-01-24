@@ -123,11 +123,17 @@ export class JiraE2EClient {
       try {
         userInfo = await this.getCurrentUserInfo();
         const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
+        
+        // Validate we have the required identifier
+        if (!identifier) {
+          throw new Error(`Missing required user identifier: ${userInfo.isCloud ? 'accountId' : 'name'}`);
+        }
+        
         // Log only first/last 4 chars to avoid exposing full identifier
         const maskedId =
-          identifier && identifier.length > MIN_ID_LENGTH_FOR_MASKING
+          identifier.length > MIN_ID_LENGTH_FOR_MASKING
             ? `${identifier.substring(0, 4)}...${identifier.substring(identifier.length - 4)}`
-            : identifier || 'unknown';
+            : identifier;
         console.log(`  Detected ${userInfo.isCloud ? 'Cloud' : 'Data Center'}, using lead: ${maskedId}`);
       } catch (userError) {
         console.error(`  Failed to get current user info: ${(userError as Error).message}`);
@@ -143,8 +149,8 @@ export class JiraE2EClient {
 
       // Cloud uses leadAccountId, Data Center uses lead (username)
       const projectPayload = userInfo.isCloud
-        ? { ...basePayload, leadAccountId: userInfo.accountId || 'admin' }
-        : { ...basePayload, lead: userInfo.name || 'admin' };
+        ? { ...basePayload, leadAccountId: userInfo.accountId! }
+        : { ...basePayload, lead: userInfo.name! };
 
       // Try software project first - it supports fixVersions
       try {
@@ -164,8 +170,8 @@ export class JiraE2EClient {
         // Fall back to business type
         try {
           const businessPayload = userInfo.isCloud
-            ? { ...basePayload, projectTypeKey: 'business' as const, leadAccountId: userInfo.accountId || 'admin' }
-            : { ...basePayload, projectTypeKey: 'business' as const, lead: userInfo.name || 'admin' };
+            ? { ...basePayload, projectTypeKey: 'business' as const, leadAccountId: userInfo.accountId! }
+            : { ...basePayload, projectTypeKey: 'business' as const, lead: userInfo.name! };
 
           const project = await this.client.projects.createProject(businessPayload as any);
           console.log(`  Created business project ${key}`);
