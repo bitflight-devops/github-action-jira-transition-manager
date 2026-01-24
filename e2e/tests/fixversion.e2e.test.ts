@@ -6,12 +6,12 @@ import { getE2EConfig } from '../scripts/e2e-config';
 import { JiraE2EClient } from '../scripts/jira-client';
 
 describe('FixVersion E2E Tests', () => {
-  let config: ReturnType<typeof getE2EConfig>;
+  // Initialize config immediately so timeout values are available for test definitions
+  const config = getE2EConfig();
   let client: JiraE2EClient;
   const projectKey = 'E2E';
 
   beforeAll(async () => {
-    config = getE2EConfig();
     client = new JiraE2EClient(config);
 
     // Verify Jira is ready
@@ -47,10 +47,13 @@ describe('FixVersion E2E Tests', () => {
   });
 
   describe('Version Creation', () => {
+    // Use timestamp suffix for unique version names across test runs
+    const testRunId = Date.now().toString().slice(-6);
+
     it(
       'should create a new patch version',
       async () => {
-        const newVersion = '1.0.1';
+        const newVersion = `1.0.1-test${testRunId}`;
 
         // Create the version
         const version = await client.createVersion(projectKey, newVersion);
@@ -71,7 +74,7 @@ describe('FixVersion E2E Tests', () => {
     it(
       'should create a new minor version',
       async () => {
-        const newVersion = '1.1.0';
+        const newVersion = `1.1.0-test${testRunId}`;
 
         const version = await client.createVersion(projectKey, newVersion);
 
@@ -84,7 +87,7 @@ describe('FixVersion E2E Tests', () => {
     it(
       'should create a new major version',
       async () => {
-        const newVersion = '2.0.0';
+        const newVersion = `2.0.0-test${testRunId}`;
 
         const version = await client.createVersion(projectKey, newVersion);
 

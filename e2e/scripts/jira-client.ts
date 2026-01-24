@@ -2,9 +2,9 @@
  * Jira E2E client using jira.js library
  * Same library as the main action for consistency
  */
-import { Version2Client, Version2Models } from 'jira.js';
+import { Version2Client, type Version2Models } from 'jira.js';
 
-import { E2EConfig } from './e2e-config';
+import type { E2EConfig } from './e2e-config';
 
 // Constants for formatting and logging
 const MIN_ID_LENGTH_FOR_MASKING = 8;
@@ -85,11 +85,8 @@ export interface JiraSearchResult {
 
 export class JiraE2EClient {
   private client: Version2Client;
-  private config: E2EConfig;
 
   constructor(config: E2EConfig) {
-    this.config = config;
-
     // jira.js uses email/apiToken field names for basic auth
     // For Data Center, map username->email and password->apiToken
     const email = config.jira.auth.email || config.jira.auth.username || '';
@@ -154,7 +151,7 @@ export class JiraE2EClient {
         name: project.name || name,
         projectTypeKey: project.projectTypeKey || 'software',
       };
-    } catch (getError) {
+    } catch (_getError) {
       // Project doesn't exist, create it
       console.log(`  Project ${key} does not exist, creating...`);
 
@@ -266,7 +263,7 @@ export class JiraE2EClient {
     const project = await this.client.projects.getProject({ projectIdOrKey: projectKey });
     const version = await this.client.projectVersions.createVersion({
       name: versionName,
-      projectId: parseInt(project.id || '0', 10),
+      projectId: Number.parseInt(project.id || '0', 10),
       released: false,
       archived: false,
     });

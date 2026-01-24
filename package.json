@@ -12,7 +12,13 @@
   "bugs": {
     "url": "https://github.com/bitflight-devops/github-action-jira-transition-manager/issues"
   },
-  "keywords": ["actions", "github", "node22", "jira", "tickets"],
+  "keywords": [
+    "actions",
+    "github",
+    "node22",
+    "jira",
+    "tickets"
+  ],
   "author": "Jamie Nelson <jamie@wearsafe.com>",
   "license": "MIT",
   "private": true,
@@ -22,14 +28,12 @@
     "test-ci": "NODE_ENV=testing vitest run --reporter=default --reporter=junit --outputFile=junit.xml",
     "build": "rimraf dist && tsc && ncc build lib/index.js -o dist --source-map --license licenses.txt && yarn build:e2e",
     "build:e2e": "tsc --project e2e/tsconfig.json --outDir e2e/dist",
-    "format": "prettier --write . --config .prettierrc.cjs --ignore-unknown",
-    "lint": "eslint --color ./src/ ./__tests__/",
-    "prelint": "yarn run format && tsc --project tsconfig.json --noemit",
-    "lint:fix": "yarn lint --fix",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "lint:markdown:fix": "yarn lint:markdown --fix",
     "lint:markdown": "markdownlint \"**/*.md\" --config=.markdownlint.json --ignore-path=.markdownlintignore",
     "all": "yon run build && yon run format && yon run lint && yon run package && yon test",
-    "stylelint-check": "stylelint-config-prettier-check",
     "commit": "git-cz",
     "pre-commit": "lint-staged && yon run build && git add dist && yarn run generate-docs",
     "preversion": "echo 'Running test';yon test",
@@ -58,13 +62,25 @@
     }
   },
   "commitlint": {
-    "extends": ["@commitlint/config-conventional"],
+    "extends": [
+      "@commitlint/config-conventional"
+    ],
     "rules": {
-      "body-max-length": [0],
-      "body-max-line-length": [0],
-      "footer-max-length": [0],
-      "footer-max-line-length": [0],
-      "header-max-length": [0]
+      "body-max-length": [
+        0
+      ],
+      "body-max-line-length": [
+        0
+      ],
+      "footer-max-length": [
+        0
+      ],
+      "footer-max-line-length": [
+        0
+      ],
+      "header-max-length": [
+        0
+      ]
     }
   },
   "engines": {
@@ -77,7 +93,10 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["src", "dist"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "dependencies": {
     "@actions/core": "^2.0.2",
     "@actions/github": "^7.0.0",
@@ -91,11 +110,10 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.12",
     "@commitlint/cli": "^20",
     "@commitlint/config-conventional": "^20",
     "@commitlint/prompt": "^20",
-    "@eslint/js": "^9",
-    "@github/prettier-config": "^0.0.6",
     "@swc/core": "^1.15.10",
     "@tsconfig/node22": "^22.0.5",
     "@types/js-yaml": "^4.0.9",
@@ -104,44 +122,23 @@
     "@types/node": "^25.0.9",
     "@types/node-fetch": "^2.6.13",
     "@types/sinon": "^17.0.3",
-    "@typescript-eslint/eslint-plugin": "^8",
-    "@typescript-eslint/parser": "^8",
-    "@typescript-eslint/typescript-estree": "^8",
     "@vercel/ncc": "^0.38.4",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
     "dotenv": "^17.2.3",
-    "eslint": "^9",
-    "eslint-config-prettier": "^10",
-    "eslint-import-resolver-typescript": "^4.4.4",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-json-schema-validator": "^6",
-    "eslint-plugin-prettier": "^5.5.5",
-    "eslint-plugin-promise": "^7.2.1",
-    "eslint-plugin-simple-import-sort": "^12",
-    "eslint-plugin-sonarjs": "^3",
-    "eslint-plugin-unicorn": "^62",
     "github-action-readme-generator": "1.8.9",
     "husky": "^9.1.7",
     "js-yaml": "^4.1.1",
-    "jsonc-eslint-parser": "^2.4.2",
     "lint-staged": "^16.2.7",
     "markdownlint-cli": "^0.47.0",
     "playwright": "^1.57.0",
-    "prettier": "^3.8.0",
-    "prettier-plugin-sh": "^0.18.0",
     "rimraf": "^6.1.2",
     "semantic-release": "^25.0.2",
     "sinon": "^19.0.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.0.0",
-    "yaml-eslint-parser": "^2.0.0",
     "yarn-or-npm": "^3.0.1"
-  },
-  "lint-staged": {
-    "{src,__tests__}/**/*.js": "eslint --fix",
-    "*.ts": ["eslint --fix"]
   },
   "optionalDependencies": {
     "@swc/core-darwin-x64": "^1.15.10"

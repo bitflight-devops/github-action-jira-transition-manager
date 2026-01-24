@@ -2,20 +2,19 @@
  * E2E tests for Jira issue transitions
  * Tests the action logic against a real Jira instance
  */
-import { Context } from '@actions/github/lib/context';
-
+import type { Context } from '@actions/github/lib/context';
+import type { Args } from '../../src/@types';
 import { Action } from '../../src/action';
-import { Args } from '../../src/@types';
 import { getE2EConfig } from '../scripts/e2e-config';
 import { JiraE2EClient } from '../scripts/jira-client';
 
 describe('Jira Transition E2E Tests', () => {
-  let config: ReturnType<typeof getE2EConfig>;
+  // Initialize config immediately so timeout values are available for test definitions
+  const config = getE2EConfig();
   let client: JiraE2EClient;
   const projectKey = 'E2E';
 
   beforeAll(async () => {
-    config = getE2EConfig();
     client = new JiraE2EClient(config);
 
     // Verify Jira is ready
