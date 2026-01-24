@@ -286,8 +286,11 @@ async function main() {
       console.log('  Submitting license...');
       await licenseTextarea.fill(license);
       await page.locator('button:has-text("Next"), input[type="submit"], #setupLicenseButton').first().click();
+      console.log('  Waiting for page to load after license submission...');
       await page.waitForLoadState('networkidle');
-      console.log('  License submitted');
+      // Give extra time for Jira to process the license
+      await page.waitForTimeout(3000);
+      console.log('  License submitted, URL: ' + page.url());
     } else {
       console.log('  License page not found');
       await page.screenshot({ path: '/tmp/jira-no-license-page.png' });
@@ -301,20 +304,54 @@ async function main() {
     console.log('Step 6: Creating Admin Account...');
     await page.waitForTimeout(2000);
 
-    const usernameInput = page.locator('input[name="username"]');
+    // Debug: Log where we are after license submission
+    const step6Url = page.url();
+    const step6Title = await page.title();
+    console.log(`  Current URL: ${step6Url}`);
+    console.log(`  Current title: ${step6Title}`);
+
+    // Check for admin form - try multiple possible field names
+    const usernameInput = page.locator(
+      'input[name="username"], input[name="fullname"], input#fullname, input#username',
+    );
     const hasAdminPage = (await usernameInput.count()) > 0;
 
+    console.log(`  Admin form fields found: ${hasAdminPage}`);
+
     if (hasAdminPage) {
-      await usernameInput.fill(ADMIN_USER);
-      await page.fill('input[name="password"]', ADMIN_PASS);
-      await page.fill('input[name="confirm"]', ADMIN_PASS);
-      await page.fill('input[name="fullname"]', 'Administrator');
-      await page.fill('input[name="email"]', 'admin@example.com');
+      // Try to fill username if it exists
+      const usernameField = page.locator('input[name="username"], input#username');
+      if ((await usernameField.count()) > 0) {
+        await usernameField.first().fill(ADMIN_USER);
+      }
+      await page.fill('input[name="password"], input#password', ADMIN_PASS);
+      await page.fill('input[name="confirm"], input#confirm', ADMIN_PASS);
+
+      const fullnameField = page.locator('input[name="fullname"], input#fullname');
+      if ((await fullnameField.count()) > 0) {
+        await fullnameField.first().fill('Administrator');
+      }
+
+      const emailField = page.locator('input[name="email"], input#email');
+      if ((await emailField.count()) > 0) {
+        await emailField.first().fill('admin@example.com');
+      }
+
       await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
       await page.waitForLoadState('networkidle');
       console.log('  Admin account created');
     } else {
-      console.log('  Admin page not found, may already be configured');
+      console.log('  Admin page not found - taking screenshot for debugging');
+      await page.screenshot({ path: '/tmp/jira-no-admin-page.png' });
+
+      // Log page content to understand what we're seeing
+      const step6Content = await page.content();
+      const formInputs = step6Content.match(/<input[^>]*name="[^"]*"[^>]*>/gi) || [];
+      console.log(`  Form inputs found: ${formInputs.length}`);
+      formInputs.slice(0, 5).forEach((input) => {
+        const nameMatch = input.match(/name="([^"]*)"/);
+        if (nameMatch) console.log(`    - ${nameMatch[1]}`);
+      });
     }
     console.log('');
 
