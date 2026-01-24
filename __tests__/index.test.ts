@@ -114,8 +114,8 @@ const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
 const gitHubWorkspace = path.resolve('/checkout-tests/workspace');
 
 const issues = 'DVPS-336,DVPS-339';
-// Note: baseUrl is read from environment variable which is set in setup.ts
-// We need to read it lazily since setup.ts runs before tests but after module load
+// Note: baseUrl is read from the JIRA_BASE_URL environment variable.
+// Use a function so we always read the current value of the environment variable when tests run.
 const getBaseUrl = () => process.env.JIRA_BASE_URL as string;
 
 // Inputs for mock @actions/core
