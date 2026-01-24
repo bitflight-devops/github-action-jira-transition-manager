@@ -102,6 +102,7 @@ export class JiraE2EClient {
 
   /**
    * Get or create a project
+   * Tries software project first (supports fixVersions), falls back to business
    */
   async ensureProject(key: string, name: string): Promise<JiraProject> {
     try {
@@ -111,26 +112,26 @@ export class JiraE2EClient {
       // Project doesn't exist, create it
       const lead = this.config.jira.auth.username || this.config.jira.auth.email || 'admin';
 
-      // Try business project type first (available in all Jira editions)
-      // No template needed - creates a basic project with Task issue type
+      // Try software project first - it supports fixVersions on create screen
       try {
         return await this.request<JiraProject>('/rest/api/2/project', {
           method: 'POST',
           body: JSON.stringify({
             key,
             name,
-            projectTypeKey: 'business',
+            projectTypeKey: 'software',
             lead,
           }),
         });
-      } catch {
-        // Fall back to software type without template
+      } catch (softwareError) {
+        console.log(`  Note: Software project failed, trying business type`);
+        // Fall back to business type (no fixVersions on create screen)
         return this.request<JiraProject>('/rest/api/2/project', {
           method: 'POST',
           body: JSON.stringify({
             key,
             name,
-            projectTypeKey: 'software',
+            projectTypeKey: 'business',
             lead,
           }),
         });
