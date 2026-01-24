@@ -38,7 +38,7 @@ async function waitForJira(): Promise<void> {
       clearTimeout(timeoutId);
 
       if (response.status === 503) {
-        console.error('✗ Jira returned 503 - setup likely failed (no admin account)');
+        console.error('✗ Jira returned 503');
         process.exit(1);
       }
 
