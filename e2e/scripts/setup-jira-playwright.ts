@@ -78,6 +78,9 @@ async function waitForNavigation(page: Page, fromUrl: string, timeout = 30000): 
 function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?: string } {
   const startTime = Date.now();
 
+  // Get current log line count so we only look at NEW lines
+  const baselineCount = parseInt(execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | wc -l`), 10) || 0;
+
   // Patterns to track progress
   const startingPattern = /Starting the JIRA Plugin System/i;
   const readyPattern = /Plugin System Started/i;
@@ -93,7 +96,8 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
 
   while (Date.now() - startTime < timeoutMs) {
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -100`);
+    // Only look at lines AFTER our baseline (new logs since we started waiting)
+    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -n +${baselineCount + 1}`);
 
     // Check for errors first
     for (const { pattern, msg } of errorPatterns) {
