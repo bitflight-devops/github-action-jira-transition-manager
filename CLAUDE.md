@@ -151,39 +151,40 @@ yarn build:e2e # Build only E2E scripts
 
 ## Development Guidelines
 
-### Before Committing Playwright Code
+### When Fixing Bugs - Reflect and Generalize
 
-**MANDATORY**: Before committing changes to any Playwright file, run these checks:
+When you find and fix a bug, STOP and ask:
 
-```bash
-# Check for page.click() with multi-selectors (needs .first())
-grep -n "page\.click(" e2e/scripts/*.ts | grep -v "\.first()"
+1. **What category of issue is this?**
+   - Case sensitivity? → Where else do I compare strings/text?
+   - Selector ambiguity? → Where else do I select elements that might not be unique?
+   - Strict mode violation? → Where else do I use methods that expect single elements?
+   - Missing error handling? → Where else might operations fail silently?
 
-# Check for getByText with string literals (should use regex /text/i)
-grep -n "getByText(['\"]" e2e/scripts/*.ts
+2. **What other code could have the same category of issue?**
+   - Not just the same function/pattern, but the same _type_ of problem
+   - Review the entire file, not just the failing line
 
-# Check for locator().click() without .first() on multi-selectors
-grep -n "\.locator(" e2e/scripts/*.ts | grep "," | grep -v "\.first()"
-```
+3. **Search broadly, then narrow down**
+   - Start with the general category, find all candidates
+   - Evaluate each one for the specific issue
 
-If any matches are found, fix them before committing.
+### Example: How We Should Have Caught the Playwright Issues
 
-### When Fixing Bugs
+| Bug Found                          | Category           | Should Have Asked                                                      | Would Have Found                                          |
+| ---------------------------------- | ------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| `getByText('Setup')` failed        | Case sensitivity   | "Where else do I match text that could vary in case?"                  | All `getByText`, `has-text`, title checks                 |
+| `page.click('a, b')` failed        | Strict mode        | "Where else do I target elements that might match multiple?"           | All `click()`, `fill()`, `locator()` with comma selectors |
+| `textarea#id` matched hidden input | Selector ambiguity | "Where else might my selector match both visible and hidden elements?" | All `#id` selectors on form pages                         |
 
-When you find and fix a bug, always:
+### Playwright Quick Reference
 
-1. **Search for similar patterns** - Use grep/glob to find other instances of the same anti-pattern
-2. **Fix all occurrences** - Don't just fix the one that failed, fix all similar issues
-3. **Add grep commands above** - If it's a detectable pattern, add a check command
-
-### Common Playwright Issues (Reference)
-
-| Issue               | Bad                           | Good                                   |
-| ------------------- | ----------------------------- | -------------------------------------- |
-| Multi-element click | `page.click('a, b')`          | `page.locator('a, b').first().click()` |
-| Case-sensitive text | `getByText('Setup')`          | `getByText(/setup/i)`                  |
-| Ambiguous selector  | `locator('#id')` when 2 exist | `locator('textarea#id')` specific      |
-| Uncaught isVisible  | `.isVisible()`                | `.isVisible().catch(() => false)`      |
+| Issue          | Pattern to Avoid     | Use Instead                               |
+| -------------- | -------------------- | ----------------------------------------- |
+| Multi-element  | `page.click('a, b')` | `page.locator('a, b').first().click()`    |
+| Case-sensitive | `getByText('Setup')` | `getByText(/setup/i)`                     |
+| Ambiguous ID   | `locator('#id')`     | `locator('textarea#id')` or more specific |
+| Uncaught error | `.isVisible()`       | `.isVisible().catch(() => false)`         |
 
 ## Links
 
