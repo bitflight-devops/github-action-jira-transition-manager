@@ -127,6 +127,11 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
     execSync('sleep 2');
   }
 
+  // Timeout - show last 20 lines of logs for debugging
+  console.log('  === Docker logs at timeout ===');
+  console.log(execQuiet(`docker logs --tail 20 ${CONTAINER_NAME} 2>&1`));
+  console.log('  ==============================');
+
   return { ready: false, error: 'Timeout waiting for plugin system restart' };
 }
 
