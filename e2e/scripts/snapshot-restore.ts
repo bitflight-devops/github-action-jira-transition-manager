@@ -40,7 +40,8 @@ interface RestoreConfig {
 }
 
 const defaultConfig: RestoreConfig = {
-  inputDir: path.join(__dirname, '..', 'snapshots'),
+  // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into snapshots/
+  inputDir: path.join(__dirname, '..', '..', 'snapshots'),
   force: false,
   composeProject: 'docker',
 };
@@ -89,7 +90,8 @@ function createVolume(volumeName: string): boolean {
 
 function stopContainers(): void {
   console.log('Stopping containers...');
-  const composeDir = path.join(__dirname, '..', 'docker');
+  // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
+  const composeDir = path.join(__dirname, '..', '..', 'docker');
 
   try {
     execSync('docker compose stop', {
@@ -104,7 +106,8 @@ function stopContainers(): void {
 
 function removeContainers(): void {
   console.log('Removing containers (keeping volumes)...');
-  const composeDir = path.join(__dirname, '..', 'docker');
+  // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
+  const composeDir = path.join(__dirname, '..', '..', 'docker');
 
   try {
     execSync('docker compose rm -f', {
