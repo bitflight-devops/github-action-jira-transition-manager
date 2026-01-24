@@ -409,28 +409,23 @@ async function main() {
         console.log('  Continuing anyway - page may still work...');
       }
 
-      // Now navigate to get the admin setup form (goto is more reliable than reload after restart)
+      // Now navigate to get the admin setup form
       console.log('  Navigating to admin setup form...');
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          break;
-        } catch (navError) {
-          console.log(`  Navigation attempt ${attempt + 1} failed: ${(navError as Error).message.split('\n')[0]}`);
-          if (attempt === 2) throw navError;
-          await page.waitForTimeout(5000);
+      try {
+        await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      } catch (navError) {
+        const errorMsg = (navError as Error).message;
+        // "interrupted by another navigation" means Jira redirected us - that's fine
+        if (errorMsg.includes('interrupted by another navigation')) {
+          console.log('  Jira redirected us (expected behavior)');
+        } else {
+          console.log(`  Navigation warning: ${errorMsg.split('\n')[0]}`);
         }
       }
 
-      // Wait for admin page to be ready (password field visible) - up to 15s
-      console.log('  Waiting for admin setup form to appear...');
-      const passwordField = page.locator('input[name="password"], input#password');
-      try {
-        await passwordField.first().waitFor({ state: 'visible', timeout: 15000 });
-        console.log('  Admin setup form ready');
-      } catch {
-        console.log('  Admin form not visible after 15s, continuing anyway...');
-      }
+      // Wait for page to settle
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+      console.log(`  Current URL: ${page.url()}`);
 
       await logPageState(page, 'after-license-submit');
       console.log('  Form inputs on new page:');
@@ -444,68 +439,86 @@ async function main() {
     }
     console.log('');
 
-    // Step 6: Handle Admin Account creation
-    console.log('Step 6: Creating Admin Account...');
-    await logPageState(page, 'step6-start');
+    // Step 6: Handle remaining setup pages (wizard state machine)
+    console.log('Step 6: Completing setup wizard...');
 
-    // List all form inputs to understand what's on the page
-    console.log('  Available form inputs:');
-    let inputNames = await dumpFormInputs(page);
+    // Loop through wizard pages until we reach dashboard or login
+    for (let wizardStep = 0; wizardStep < 10; wizardStep++) {
+      await logPageState(page, `wizard-step-${wizardStep}`);
+      console.log(`  [Wizard ${wizardStep}] URL: ${page.url()}`);
 
-    // Check if we're on Application Properties page (Jira sometimes returns here after license)
-    const hasTitleField = inputNames.some((n) => n.toLowerCase() === 'title');
-    const hasBaseURLField = inputNames.some((n) => n.toLowerCase() === 'baseurl');
-    if (hasTitleField && hasBaseURLField) {
-      console.log('  Still on Application Properties page - submitting to proceed...');
-      await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(2000);
-      // Refresh input list after navigation
-      console.log('  Form inputs after Application Properties submit:');
-      inputNames = await dumpFormInputs(page);
-    }
+      const inputNames = await dumpFormInputs(page);
+      const url = page.url().toLowerCase();
 
-    // Check for admin form fields by looking for password-related inputs
-    const hasPasswordField = inputNames.some((n) => n.toLowerCase().includes('password'));
-    const hasUsernameField = inputNames.some((n) => n.toLowerCase().includes('username'));
-    const hasFullnameField = inputNames.some((n) => n.toLowerCase().includes('fullname'));
+      // Detect page type
+      const hasLicenseField = inputNames.some((n) => n.toLowerCase().includes('licensekey'));
+      const hasTitleField = inputNames.some((n) => n.toLowerCase() === 'title');
+      const hasBaseURLField = inputNames.some((n) => n.toLowerCase() === 'baseurl');
+      const hasPasswordField = inputNames.some((n) => n.toLowerCase().includes('password'));
+      const hasUsernameField = inputNames.some((n) => n.toLowerCase().includes('username'));
+      const hasFullnameField = inputNames.some((n) => n.toLowerCase().includes('fullname'));
 
-    console.log(`  Has password field: ${hasPasswordField}`);
-    console.log(`  Has username field: ${hasUsernameField}`);
-    console.log(`  Has fullname field: ${hasFullnameField}`);
-
-    if (hasPasswordField) {
-      console.log('  Filling admin account form...');
-
-      // Fill fields that exist
-      if (hasUsernameField) {
-        await page.locator('input[name="username"], input#username').first().fill(ADMIN_USER);
+      // Check if we're done (login page or dashboard)
+      if (url.includes('login') || url.includes('dashboard')) {
+        console.log('  Reached login/dashboard - wizard complete');
+        break;
       }
 
-      await page.locator('input[name="password"], input#password').first().fill(ADMIN_PASS);
-
-      const confirmField = page.locator('input[name="confirm"], input#confirm');
-      if ((await confirmField.count()) > 0) {
-        await confirmField.first().fill(ADMIN_PASS);
+      // Handle Application Properties page
+      if (hasTitleField && hasBaseURLField) {
+        console.log('  On Application Properties page - filling and submitting...');
+        await page.fill('input[name="title"]', 'Jira E2E');
+        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+        await page.waitForLoadState('networkidle');
+        continue;
       }
 
-      if (hasFullnameField) {
-        await page.locator('input[name="fullname"], input#fullname').first().fill('Administrator');
+      // Handle License page (if we somehow need to re-submit)
+      if (hasLicenseField && !hasPasswordField) {
+        console.log('  On License page - this should have been handled earlier');
+        // Skip - license was already submitted, just click next if there's a button
+        const nextBtn = page.locator('button:has-text("Next"), input[type="submit"]');
+        if ((await nextBtn.count()) > 0) {
+          await nextBtn.first().click();
+          await page.waitForLoadState('networkidle');
+        }
+        continue;
       }
 
-      const emailField = page.locator('input[name="email"], input#email');
-      if ((await emailField.count()) > 0) {
-        await emailField.first().fill('admin@example.com');
+      // Handle Admin Account page
+      if (hasPasswordField) {
+        console.log('  On Admin Account page - creating admin...');
+        if (hasUsernameField) {
+          await page.locator('input[name="username"], input#username').first().fill(ADMIN_USER);
+        }
+        await page.locator('input[name="password"], input#password').first().fill(ADMIN_PASS);
+        const confirmField = page.locator('input[name="confirm"], input#confirm');
+        if ((await confirmField.count()) > 0) {
+          await confirmField.first().fill(ADMIN_PASS);
+        }
+        if (hasFullnameField) {
+          await page.locator('input[name="fullname"], input#fullname').first().fill('Administrator');
+        }
+        const emailField = page.locator('input[name="email"], input#email');
+        if ((await emailField.count()) > 0) {
+          await emailField.first().fill('admin@example.com');
+        }
+        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+        await page.waitForLoadState('networkidle');
+        console.log('  Admin account created');
+        continue;
       }
 
-      await logPageState(page, 'step6-before-submit');
-      await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
-      await page.waitForLoadState('networkidle');
-      await logPageState(page, 'step6-after-submit');
-      console.log('  Admin account created');
-    } else {
-      console.log('  No password field found - not on admin setup page');
-      console.log('  This could mean: already configured, or on a different page');
+      // No recognized page - try clicking any next/finish button
+      console.log('  Unknown page - looking for next/finish button...');
+      const anyButton = page.locator('button:has-text("Next"), button:has-text("Finish"), input[type="submit"]');
+      if ((await anyButton.count()) > 0) {
+        await anyButton.first().click();
+        await page.waitForLoadState('networkidle');
+      } else {
+        console.log('  No navigation button found - breaking');
+        break;
+      }
     }
     console.log('');
 
