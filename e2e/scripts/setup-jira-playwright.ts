@@ -409,11 +409,10 @@ async function main() {
         throw new Error(`Plugin restart failed: ${restartResult.error}`);
       }
 
-      // After plugin restart, Jira redirects the browser to the next setup page
-      // Wait for URL to change from the license page
-      const licenseUrl = page.url();
+      // After "Plugin System Started", Jira redirects the browser to the next setup page
+      // This should happen within seconds - if not, something is wrong
       console.log('  Waiting for Jira redirect to complete...');
-      await page.waitForURL((url) => !url.href.includes('SetupLicense'), { timeout: 60000 });
+      await page.waitForURL((url) => !url.href.includes('SetupLicense'), { timeout: 15000 });
       console.log(`  Current URL after plugin restart: ${page.url()}`);
 
       await logPageState(page, 'after-license-submit');
