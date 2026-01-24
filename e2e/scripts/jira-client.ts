@@ -10,6 +10,12 @@ import { E2EConfig } from './e2e-config';
 const MIN_ID_LENGTH_FOR_MASKING = 8;
 const STACK_TRACE_LINES = 3;
 
+// Project template keys for Jira
+const PROJECT_TEMPLATES = {
+  SOFTWARE_SCRUM: 'com.pyxis.greenhopper.jira:gh-scrum-template',
+  BUSINESS_CORE: 'com.atlassian.jira-core-project-templates:jira-core-simplified-process-control',
+} as const;
+
 export interface JiraProject {
   id: string;
   key: string;
@@ -145,8 +151,9 @@ export class JiraE2EClient {
         key,
         name,
         projectTypeKey: 'software' as const,
-        // Data Center requires projectTemplateKey, use Scrum template which supports fixVersions
-        projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-scrum-template',
+        // Data Center requires projectTemplateKey - use Scrum template which supports fixVersions
+        // Note: This assumes standard templates are available. Custom Jira instances may need different templates.
+        projectTemplateKey: PROJECT_TEMPLATES.SOFTWARE_SCRUM,
       };
 
       // Cloud uses leadAccountId, Data Center uses lead (username)
@@ -171,19 +178,17 @@ export class JiraE2EClient {
 
         // Fall back to business type
         try {
+          // Use Core business template for business projects
+          const businessTemplatePayload = {
+            key,
+            name,
+            projectTypeKey: 'business' as const,
+            projectTemplateKey: PROJECT_TEMPLATES.BUSINESS_CORE,
+          };
+
           const businessPayload = userInfo.isCloud
-            ? {
-                ...basePayload,
-                projectTypeKey: 'business' as const,
-                projectTemplateKey: 'com.atlassian.jira-core-project-templates:jira-core-simplified-process-control',
-                leadAccountId: userInfo.accountId!,
-              }
-            : {
-                ...basePayload,
-                projectTypeKey: 'business' as const,
-                projectTemplateKey: 'com.atlassian.jira-core-project-templates:jira-core-simplified-process-control',
-                lead: userInfo.name!,
-              };
+            ? { ...businessTemplatePayload, leadAccountId: userInfo.accountId! }
+            : { ...businessTemplatePayload, lead: userInfo.name! };
 
           const project = await this.client.projects.createProject(businessPayload as any);
           console.log(`  Created business project ${key}`);
