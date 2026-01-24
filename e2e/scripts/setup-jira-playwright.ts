@@ -405,14 +405,15 @@ async function main() {
 
       const restartResult = waitForPluginSystemRestart(90000); // 90s max
       if (!restartResult.ready) {
-        console.log(`  ⚠ Plugin restart wait: ${restartResult.error || 'Unknown error'}`);
-        console.log('  Continuing anyway - page may still work...');
+        console.log(`  ✗ Plugin restart failed: ${restartResult.error || 'Unknown error'}`);
+        throw new Error(`Plugin restart failed: ${restartResult.error}`);
       }
 
-      // After plugin restart, Jira automatically redirects the browser to the next setup page
-      // DON'T navigate - just wait for the redirect to complete
+      // After plugin restart, Jira redirects the browser to the next setup page
+      // Wait for URL to change from the license page
+      const licenseUrl = page.url();
       console.log('  Waiting for Jira redirect to complete...');
-      await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {});
+      await page.waitForURL((url) => !url.href.includes('SetupLicense'), { timeout: 60000 });
       console.log(`  Current URL after plugin restart: ${page.url()}`);
 
       await logPageState(page, 'after-license-submit');
