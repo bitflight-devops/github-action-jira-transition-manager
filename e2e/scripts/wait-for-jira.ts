@@ -6,10 +6,30 @@
 import { getE2EConfig } from './e2e-config';
 import { JiraE2EClient } from './jira-client';
 
+/**
+ * Pauses execution for the specified duration.
+ * @param ms - The number of milliseconds to sleep
+ * @returns A promise that resolves after the specified delay
+ */
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Waits for Jira to become ready by polling the status and authenticated endpoints.
+ *
+ * Polls the Jira instance with a 5-second interval until:
+ * - HTTP status endpoint responds successfully
+ * - Server info can be retrieved
+ * - Authentication is verified
+ *
+ * Implements fail-fast behavior: exits early if the same error occurs 6 consecutive times
+ * (30 seconds of identical errors) to avoid wasting CI time.
+ *
+ * @returns A promise that resolves when Jira is ready
+ * @throws Exits process with code 1 if Jira returns 503, times out (2 minutes),
+ *         or the same error occurs repeatedly
+ */
 async function waitForJira(): Promise<void> {
   const config = getE2EConfig();
   const client = new JiraE2EClient(config);

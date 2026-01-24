@@ -5,6 +5,19 @@ import * as core from '@actions/core';
 import type { Args, JiraAuthConfig } from './@types';
 import * as fsHelper from './fs-helper';
 
+/**
+ * Retrieves and validates all required inputs for the GitHub Action.
+ *
+ * Collects Jira authentication configuration from environment variables or action inputs,
+ * validates that required values are present, and assembles the complete arguments object
+ * needed to run the action.
+ *
+ * @returns The validated action arguments containing Jira config, issue keys, and settings
+ * @throws {Error} When JIRA_BASE_URL is not defined in environment or action inputs
+ * @throws {Error} When JIRA_API_TOKEN is not defined in environment or action inputs
+ * @throws {Error} When JIRA_USER_EMAIL is not defined in environment or action inputs
+ * @throws {Error} When GITHUB_WORKSPACE environment variable is not defined
+ */
 export function getInputs(): Args {
   const result = {} as unknown as Args;
   const jiraConfig = {} as unknown as JiraAuthConfig;

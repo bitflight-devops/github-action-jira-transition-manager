@@ -21,24 +21,42 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
 
+/**
+ * Metadata describing a snapshot archive
+ */
 interface SnapshotMetadata {
+  /** ISO timestamp when the snapshot was created */
   createdAt: string;
+  /** Version of Jira that was running when snapshot was taken */
   jiraVersion: string;
+  /** Version of MySQL used in the snapshot */
   mysqlVersion?: string;
-  postgresVersion?: string; // Legacy field for backwards compatibility
+  /** Legacy field for backwards compatibility with older snapshots */
+  postgresVersion?: string;
+  /** List of Docker volumes included in this snapshot */
   volumes: {
+    /** Docker volume name (without project prefix) */
     name: string;
+    /** Filename of the tar.gz archive for this volume */
     file: string;
   }[];
+  /** Optional notes about the snapshot */
   notes?: string;
 }
 
+/**
+ * Configuration options for the snapshot restore operation
+ */
 interface RestoreConfig {
+  /** Directory containing snapshot files to restore from */
   inputDir: string;
+  /** Whether to overwrite existing volumes without prompting */
   force: boolean;
+  /** Docker Compose project name prefix for volume names */
   composeProject: string;
 }
 
+/** Default configuration for snapshot restore */
 const defaultConfig: RestoreConfig = {
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into snapshots/
   inputDir: path.join(__dirname, '..', '..', 'snapshots'),
@@ -46,10 +64,20 @@ const defaultConfig: RestoreConfig = {
   composeProject: 'docker',
 };
 
+/**
+ * Constructs the full Docker volume name with project prefix
+ * @param projectName - Docker Compose project name
+ * @param volumeName - Base volume name without prefix
+ * @returns Full volume name in format `{projectName}_{volumeName}`
+ */
 function getVolumeFullName(projectName: string, volumeName: string): string {
   return `${projectName}_${volumeName}`;
 }
 
+/**
+ * Checks if Docker is available on the system
+ * @returns True if Docker CLI is accessible, false otherwise
+ */
 function checkDocker(): boolean {
   try {
     execSync('docker --version', { stdio: 'pipe' });
@@ -59,6 +87,11 @@ function checkDocker(): boolean {
   }
 }
 
+/**
+ * Checks if a Docker volume exists
+ * @param volumeName - Name of the Docker volume to check
+ * @returns True if the volume exists, false otherwise
+ */
 function volumeExists(volumeName: string): boolean {
   try {
     const result = spawnSync('docker', ['volume', 'inspect', volumeName], {
@@ -70,6 +103,11 @@ function volumeExists(volumeName: string): boolean {
   }
 }
 
+/**
+ * Removes a Docker volume
+ * @param volumeName - Name of the Docker volume to remove
+ * @returns True if removal succeeded, false otherwise
+ */
 function removeVolume(volumeName: string): boolean {
   try {
     execSync(`docker volume rm ${volumeName}`, { stdio: 'pipe' });
@@ -79,6 +117,11 @@ function removeVolume(volumeName: string): boolean {
   }
 }
 
+/**
+ * Creates a new Docker volume
+ * @param volumeName - Name of the Docker volume to create
+ * @returns True if creation succeeded, false otherwise
+ */
 function createVolume(volumeName: string): boolean {
   try {
     execSync(`docker volume create ${volumeName}`, { stdio: 'pipe' });
@@ -88,6 +131,12 @@ function createVolume(volumeName: string): boolean {
   }
 }
 
+/**
+ * Stops all Docker Compose containers for the E2E environment
+ *
+ * Uses the docker-compose.yml in the e2e/docker directory.
+ * Silently handles the case where containers are not running.
+ */
 function stopContainers(): void {
   console.log('Stopping containers...');
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
@@ -104,6 +153,12 @@ function stopContainers(): void {
   }
 }
 
+/**
+ * Removes Docker Compose containers while preserving volumes
+ *
+ * Uses the docker-compose.yml in the e2e/docker directory.
+ * Errors are silently ignored as containers may not exist.
+ */
 function removeContainers(): void {
   console.log('Removing containers (keeping volumes)...');
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
@@ -119,6 +174,16 @@ function removeContainers(): void {
   }
 }
 
+/**
+ * Restores a Docker volume from a snapshot tar.gz archive
+ *
+ * Uses an Alpine container to extract the archive contents into the volume.
+ * Clears existing volume contents before restoration.
+ *
+ * @param volumeName - Name of the Docker volume to restore into
+ * @param snapshotPath - Absolute path to the snapshot tar.gz file
+ * @returns True if restoration succeeded, false otherwise
+ */
 function restoreVolume(volumeName: string, snapshotPath: string): boolean {
   console.log(`Restoring volume ${volumeName} from ${path.basename(snapshotPath)}...`);
 
@@ -148,6 +213,12 @@ function restoreVolume(volumeName: string, snapshotPath: string): boolean {
   }
 }
 
+/**
+ * Prompts the user for confirmation via stdin
+ *
+ * @param message - The confirmation message to display
+ * @returns Promise resolving to true if user enters 'y' or 'Y', false otherwise
+ */
 async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -162,6 +233,15 @@ async function confirm(message: string): Promise<boolean> {
   });
 }
 
+/**
+ * Main entry point for the snapshot restore script
+ *
+ * Parses command-line arguments, validates prerequisites, and orchestrates
+ * the restoration of Docker volumes from snapshot archives.
+ *
+ * @throws Exits process with code 1 if Docker is unavailable, snapshots are
+ *         missing, or restoration fails
+ */
 async function main(): Promise<void> {
   console.log('=== Jira E2E Snapshot Restore ===\n');
 

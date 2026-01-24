@@ -14,10 +14,22 @@ import { getE2EConfig } from './e2e-config';
 
 const CONTAINER_NAME = 'jira-e2e';
 
+/**
+ * Pause execution for a specified duration.
+ * @param ms - The number of milliseconds to sleep
+ * @returns A promise that resolves after the specified delay
+ */
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Execute a shell command synchronously with logging on failure.
+ * @param cmd - The shell command to execute
+ * @param timeout - Maximum execution time in milliseconds (default: 30000)
+ * @returns The command's stdout as a string
+ * @throws Re-throws the original error after logging command failure details
+ */
 function exec(cmd: string, timeout = 30000): string {
   try {
     return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -29,6 +41,12 @@ function exec(cmd: string, timeout = 30000): string {
   }
 }
 
+/**
+ * Execute a shell command synchronously, suppressing errors.
+ * @param cmd - The shell command to execute
+ * @param timeout - Maximum execution time in milliseconds (default: 30000)
+ * @returns The command's stdout as a string, or empty string on failure
+ */
 function execQuiet(cmd: string, timeout = 30000): string {
   try {
     return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -38,7 +56,11 @@ function execQuiet(cmd: string, timeout = 30000): string {
 }
 
 /**
- * Watch Docker logs for a pattern
+ * Watch Docker container logs for a specific pattern.
+ * Spawns a docker logs process and monitors stdout/stderr for the pattern.
+ * @param pattern - The string pattern to search for in the logs
+ * @param timeoutMs - Maximum time to wait in milliseconds before giving up
+ * @returns True if the pattern was found, false if timeout occurred
  */
 async function waitForLogPattern(pattern: string, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -88,14 +110,20 @@ async function waitForLogPattern(pattern: string, timeoutMs: number): Promise<bo
 }
 
 /**
- * Get recent Docker logs
+ * Retrieve recent log output from the Jira Docker container.
+ * @param lines - Number of log lines to retrieve from the tail (default: 50)
+ * @returns The container log output as a string, or empty string on failure
  */
 function getDockerLogs(lines = 50): string {
   return execQuiet(`docker logs --tail ${lines} ${CONTAINER_NAME} 2>&1`);
 }
 
 /**
- * Wait for HTTP to be available
+ * Wait for Jira HTTP endpoint to become available.
+ * Polls the /status endpoint until it responds or timeout is reached.
+ * @param baseUrl - The base URL of the Jira instance (e.g., http://localhost:8080)
+ * @param timeoutMs - Maximum time to wait in milliseconds
+ * @returns True if HTTP became available, false if timeout occurred
  */
 async function waitForHttp(baseUrl: string, timeoutMs: number): Promise<boolean> {
   const start = Date.now();
@@ -114,7 +142,10 @@ async function waitForHttp(baseUrl: string, timeoutMs: number): Promise<boolean>
 }
 
 /**
- * Get the server ID from Jira (needed for license generation)
+ * Retrieve the Jira server ID required for license generation.
+ * Attempts to fetch via REST API first, then falls back to parsing the setup page HTML.
+ * @param baseUrl - The base URL of the Jira instance
+ * @returns The server ID string (format: XXXX-XXXX-XXXX-XXXX), or null if not found
  */
 async function getServerId(baseUrl: string): Promise<string | null> {
   // Try REST API first
@@ -169,7 +200,9 @@ async function getServerId(baseUrl: string): Promise<string | null> {
 }
 
 /**
- * Generate license using atlassian-agent
+ * Generate a Jira license using the atlassian-agent tool inside the Docker container.
+ * @param serverId - The Jira server ID to generate the license for
+ * @returns The generated license string, or null if generation failed
  */
 function generateLicense(serverId: string): string | null {
   try {
@@ -207,7 +240,10 @@ function generateLicense(serverId: string): string | null {
 }
 
 /**
- * Parse Set-Cookie headers and return a Cookie header string
+ * Parse Set-Cookie headers from a fetch Response and return a Cookie header string.
+ * Handles both modern getSetCookie() method and legacy header parsing.
+ * @param response - The fetch Response object containing Set-Cookie headers
+ * @returns A semicolon-separated cookie string suitable for the Cookie header
  */
 function parseCookies(response: Response): string {
   const cookies: string[] = [];
@@ -246,7 +282,10 @@ function parseCookies(response: Response): string {
 }
 
 /**
- * Insert license directly into the database (bypasses XSRF issues)
+ * Insert the license directly into the MySQL database.
+ * This bypasses XSRF protection issues that can occur with HTTP submission.
+ * @param license - The license string to insert
+ * @returns True if the license was successfully inserted and verified, false otherwise
  */
 function insertLicenseViaDatabase(license: string): boolean {
   try {
@@ -308,7 +347,11 @@ function insertLicenseViaDatabase(license: string): boolean {
 }
 
 /**
- * Submit license via HTTP POST with cookie handling (fallback method)
+ * Submit the license via HTTP POST to the Jira setup endpoint.
+ * Handles CSRF token extraction and cookie management.
+ * @param baseUrl - The base URL of the Jira instance
+ * @param license - The license string to submit
+ * @returns True if submission succeeded (2xx or redirect), false otherwise
  */
 async function submitLicenseViaHttp(baseUrl: string, license: string): Promise<boolean> {
   // Get the license page to extract any tokens and cookies
@@ -378,8 +421,11 @@ async function submitLicenseViaHttp(baseUrl: string, license: string): Promise<b
 }
 
 /**
- * Submit license - tries database first, then falls back to HTTP
- * Returns { success: boolean, usedDatabase: boolean }
+ * Submit the license to Jira using the most reliable method available.
+ * Tries database insertion first (more reliable), then falls back to HTTP submission.
+ * @param baseUrl - The base URL of the Jira instance
+ * @param license - The license string to submit
+ * @returns Object with success status and whether database method was used
  */
 async function submitLicense(baseUrl: string, license: string): Promise<{ success: boolean; usedDatabase: boolean }> {
   // Try database insertion first (more reliable, avoids XSRF issues)
@@ -395,7 +441,9 @@ async function submitLicense(baseUrl: string, license: string): Promise<{ succes
 }
 
 /**
- * Restart the Jira container to pick up database changes
+ * Restart the Jira Docker container to apply configuration changes.
+ * Used after database license insertion to force Jira to reload the license.
+ * @returns True if restart command succeeded, false otherwise
  */
 async function restartJiraContainer(): Promise<boolean> {
   try {
@@ -411,7 +459,12 @@ async function restartJiraContainer(): Promise<boolean> {
 }
 
 /**
- * Complete remaining setup steps via HTTP
+ * Complete the remaining Jira setup wizard steps via HTTP.
+ * Handles application properties, admin account creation, and setup finalization.
+ * @param baseUrl - The base URL of the Jira instance
+ * @param username - The admin username to create
+ * @param password - The admin password to set
+ * @returns True after attempting all setup steps
  */
 async function completeSetup(baseUrl: string, username: string, password: string): Promise<boolean> {
   const steps = [
@@ -496,7 +549,12 @@ async function completeSetup(baseUrl: string, username: string, password: string
 }
 
 /**
- * Verify Jira is ready for API access
+ * Verify that Jira is fully configured and the REST API is accessible.
+ * Polls the serverInfo endpoint with authentication until successful or timeout.
+ * @param baseUrl - The base URL of the Jira instance
+ * @param username - The admin username for authentication
+ * @param password - The admin password for authentication
+ * @returns True if API is accessible and authenticated, false after max attempts
  */
 async function verifyJiraReady(baseUrl: string, username: string, password: string): Promise<boolean> {
   const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
@@ -539,6 +597,18 @@ async function verifyJiraReady(baseUrl: string, username: string, password: stri
   return false;
 }
 
+/**
+ * Main entry point for automating Jira Data Center setup.
+ * Orchestrates the complete setup process including:
+ * - Verifying database configuration mount
+ * - Waiting for Jira to start and HTTP to become available
+ * - Retrieving server ID and generating license
+ * - Submitting license (via database or HTTP)
+ * - Completing admin account setup
+ * - Verifying API accessibility
+ *
+ * @throws Exits process with code 1 if any critical step fails
+ */
 async function setupJira(): Promise<void> {
   const config = getE2EConfig();
   const baseUrl = config.jira.baseUrl;

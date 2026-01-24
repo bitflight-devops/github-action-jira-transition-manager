@@ -5,15 +5,32 @@ import type { Args, JiraConfig } from './@types';
 import Issue, { type IssueOutput } from './Issue';
 import Jira from './Jira';
 
+/**
+ * Main action class that orchestrates Jira issue transitions based on GitHub events.
+ *
+ * This class manages the workflow of transitioning multiple Jira issues in parallel,
+ * using configuration from the action inputs and the GitHub event context to determine
+ * target states.
+ */
 export class Action {
+  /** Jira API client instance for making API calls */
   jira: Jira;
 
+  /** Configuration for connecting to Jira (baseUrl, token, email) */
   config: JiraConfig;
 
+  /** Parsed action arguments including issues list and transition configuration */
   argv: Args;
 
+  /** GitHub event context providing information about the triggering event */
   githubEvent: Context;
 
+  /**
+   * Creates a new Action instance.
+   *
+   * @param githubEvent - The GitHub Actions context containing event information
+   * @param argv - Parsed action arguments including Jira configuration and issue list
+   */
   constructor(githubEvent: Context, argv: Args) {
     this.jira = new Jira({
       baseUrl: argv.config.baseUrl,
@@ -26,6 +43,16 @@ export class Action {
     this.githubEvent = githubEvent;
   }
 
+  /**
+   * Transitions a single Jira issue to its target state.
+   *
+   * Attempts to transition the issue and returns the output data on success.
+   * On failure, logs the error (or fails the action if failOnError is enabled)
+   * and returns undefined.
+   *
+   * @param issueObj - The Issue instance to transition
+   * @returns The issue output data if successful, undefined if the transition failed
+   */
   async transitionIssue(issueObj: Issue): Promise<IssueOutput | undefined> {
     return issueObj
       .transition()
@@ -44,6 +71,15 @@ export class Action {
       });
   }
 
+  /**
+   * Executes the action by processing all specified Jira issues.
+   *
+   * Parses the comma-separated issue list, builds Issue objects for each,
+   * and transitions them in parallel. Reports success/failure counts and
+   * sets the action output with the results.
+   *
+   * @returns True if at least one issue was successfully transitioned, false otherwise
+   */
   async execute(): Promise<boolean> {
     const { argv, jira, githubEvent } = this;
     const issueList = argv.issues.split(',');

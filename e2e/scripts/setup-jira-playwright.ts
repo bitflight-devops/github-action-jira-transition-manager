@@ -19,6 +19,12 @@ const SCREENSHOT_DIR = '/tmp/jira-setup';
 // HELPER FUNCTIONS
 // =============================================================================
 
+/**
+ * Executes a shell command silently, suppressing all output and errors.
+ *
+ * @param cmd - The shell command to execute
+ * @returns The trimmed stdout output, or empty string if the command fails
+ */
 function execQuiet(cmd: string): string {
   try {
     return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
@@ -28,7 +34,14 @@ function execQuiet(cmd: string): string {
 }
 
 /**
- * Generate license using atlassian-agent.jar inside the container
+ * Generates a Jira license using the atlassian-agent.jar inside the Docker container.
+ *
+ * The function executes the license generation tool within the Jira container,
+ * parses the output to extract the license key, and returns it.
+ *
+ * @param serverId - The Jira Server ID (must match pattern [A-Z0-9-]+)
+ * @returns The generated license key string, or null if generation fails
+ * @throws Never throws directly, but logs errors and returns null on failure
  */
 function generateLicense(serverId: string): string | null {
   // Validate serverId to prevent command injection - must match strict pattern
@@ -66,8 +79,16 @@ function generateLicense(serverId: string): string | null {
 }
 
 /**
- * Waits for the specific "Plugin System Started" log message
- * appearing AFTER a specific timestamp.
+ * Waits for the Jira Plugin System to restart by monitoring Docker logs.
+ *
+ * Polls Docker logs for the "Plugin System Started" message appearing after
+ * the specified timestamp. This ensures we detect a fresh restart rather than
+ * matching the initial boot log.
+ *
+ * @param sinceTimestamp - ISO timestamp (e.g., "2026-01-24T12:00:00Z") to filter logs
+ * @param timeoutMs - Maximum time to wait in milliseconds before giving up
+ * @returns True if restart was detected within timeout, false otherwise
+ * @throws Error if Jira crashes with OutOfMemoryError or FATAL error
  */
 function waitForPluginRestart(sinceTimestamp: string, timeoutMs: number): boolean {
   const startTime = Date.now();
@@ -105,6 +126,24 @@ function waitForPluginRestart(sinceTimestamp: string, timeoutMs: number): boolea
 // MAIN EXECUTION
 // =============================================================================
 
+/**
+ * Main entry point for the Jira setup automation script.
+ *
+ * Automates the complete Jira Data Center setup wizard using Playwright browser automation.
+ * This handles XSRF tokens automatically since it uses a real browser session.
+ *
+ * The setup process includes:
+ * 1. Waiting for Jira container to be ready
+ * 2. Launching headless Chromium browser
+ * 3. Navigating through application properties setup
+ * 4. Generating and applying license via atlassian-agent
+ * 5. Creating admin user account
+ * 6. Configuring email settings (skipped)
+ * 7. Verifying successful setup by checking login page
+ *
+ * @returns Promise that resolves when setup completes successfully
+ * @throws Error if any setup step fails or times out
+ */
 async function main() {
   console.log('============================================================');
   console.log('Jira Setup (Playwright) - FINAL ROBUST VERSION');

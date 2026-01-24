@@ -57404,6 +57404,13 @@ function requireDist () {
 
 var distExports = requireDist();
 
+/**
+ * Checks if a directory exists at the specified path.
+ * @param path - The filesystem path to check for a directory.
+ * @param required - If true, throws an error when the directory does not exist.
+ * @returns True if the directory exists, false otherwise (when not required).
+ * @throws Error if path is empty or if required is true and directory does not exist.
+ */
 function directoryExistsSync(path, required) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
@@ -57416,12 +57423,24 @@ function directoryExistsSync(path, required) {
     }
     throw new Error(`Directory '${path}' does not exist`);
 }
+/**
+ * Checks if a file or directory exists at the specified path.
+ * @param path - The filesystem path to check.
+ * @returns True if the path exists, false otherwise.
+ * @throws Error if path is empty.
+ */
 function existsSync(path) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
     }
     return fs.existsSync(path);
 }
+/**
+ * Checks if a file (not a directory) exists at the specified path.
+ * @param path - The filesystem path to check for a file.
+ * @returns True if a file exists at the path, false if path does not exist or is a directory.
+ * @throws Error if path is empty.
+ */
 function fileExistsSync(path) {
     if (!path) {
         throw new Error("Arg 'path' must not be empty");
@@ -57435,26 +57454,62 @@ function fileExistsSync(path) {
     return false;
 }
 
+/**
+ * Checks if a value is a non-null object.
+ * @param v - The value to check
+ * @returns True if the value is a non-null object, false otherwise
+ */
 const isObject$2 = (v) => {
     return v && typeof v === 'object';
 };
+/**
+ * Compares two values for strict equality and logs the comparison.
+ * @param v1 - The first value to compare
+ * @param v2 - The second value to compare
+ * @returns True if the values are strictly equal, false otherwise
+ */
 function objEquals(v1, v2) {
     coreExports.debug(`Comparing a:${JSON.stringify(v1)} to b:${JSON.stringify(v2)} (${v1 === v2})`);
     return v1 === v2;
 }
+/**
+ * Recursively checks if object `a` satisfies the conditions defined in object `b`.
+ * For nested objects, performs deep comparison. For primitive values, uses strict equality.
+ * @param a - The object to check (typically GitHub context payload)
+ * @param b - The conditions object to match against
+ * @returns True if any key in `b` matches the corresponding value in `a`
+ */
 function checkConditions(a, b) {
     return Object.keys(b).some((k) => {
         return isObject$2(a[k]) && isObject$2(b[k]) ? checkConditions(a[k], b[k]) : objEquals(a[k], b[k]);
     });
 }
 const yamlConfigPath = '.github/github_event_jira_transitions.';
+/**
+ * Manages the mapping between GitHub events and Jira issue state transitions.
+ * Loads configuration from YAML that defines which GitHub events trigger which Jira transitions.
+ */
 class TransitionEventManager {
+    /** The GitHub Actions context containing event payload and metadata */
     context;
+    /** Map of project keys to their transition event configurations */
     projects = {};
+    /** Jira client instance for API operations */
     jira;
+    /** Whether to throw errors or log warnings when configuration issues occur */
     failOnError = false;
+    /** Map of project keys (uppercase) to arrays of state names that should be ignored during transitions */
     ignoredStates;
+    /** List of GitHub event types this manager listens for */
     listenForEvents = [];
+    /**
+     * Creates a new TransitionEventManager instance.
+     * @param context - The GitHub Actions context containing event information
+     * @param jira - The Jira client instance
+     * @param argv - Command-line arguments including configuration options
+     * @throws Error if no YAML configuration is found (either as input or file) and failOnError is true
+     * @throws Error if the YAML configuration lacks a 'projects' key and failOnError is true
+     */
     constructor(context, jira, argv) {
         this.jira = jira;
         this.context = context;
@@ -57494,9 +57549,21 @@ class TransitionEventManager {
             }
         }
     }
+    /**
+     * Retrieves the list of Jira states that should be ignored for a given project.
+     * @param currentProject - The Jira project key (case-insensitive)
+     * @returns Array of state names to ignore, or empty array if none configured
+     */
     getIgnoredStates(currentProject) {
         return this.ignoredStates.get(currentProject.toUpperCase()) ?? [];
     }
+    /**
+     * Determines the target Jira state based on the current GitHub event context.
+     * Matches the GitHub context payload against the configured transition conditions
+     * for the specified project.
+     * @param currentProjectName - The Jira project key to look up transitions for
+     * @returns The target state name if a matching condition is found, or empty string if no match
+     */
     githubEventToState(currentProjectName) {
         coreExports.debug(`starting githubEventToState(${currentProjectName})`);
         coreExports.debug(`Github Context is \n${distExports.stringify(this.context)}`);
@@ -57521,7 +57588,15 @@ class TransitionEventManager {
     }
 }
 
+/**
+ * Represents a Jira issue and handles its workflow transitions.
+ *
+ * This class encapsulates all operations related to a single Jira issue,
+ * including fetching issue data, determining available transitions,
+ * and applying state changes based on GitHub event mappings.
+ */
 class Issue {
+    /** The Jira issue key (e.g., "PROJ-123") */
     issue;
     projectName;
     transitionNames = [];
@@ -57535,6 +57610,14 @@ class Issue {
     transitionsLogString = [];
     argv;
     transitionEventManager;
+    /**
+     * Creates a new Issue instance.
+     *
+     * @param issue - The Jira issue key (e.g., "PROJ-123")
+     * @param jira - The Jira client instance for API interactions
+     * @param argv - Command-line arguments and configuration options
+     * @param context - The GitHub Actions context containing event information
+     */
     constructor(issue, jira, argv, context) {
         this.issue = issue;
         const issuePattern = /^(?<projectName>[A-Z]{2,10})-\d+$/i;
@@ -57544,6 +57627,14 @@ class Issue {
         this.argv = argv;
         this.transitionEventManager = new TransitionEventManager(context, jira, argv);
     }
+    /**
+     * Initializes the issue by fetching data from Jira and preparing transition information.
+     *
+     * This method must be called after construction to populate the issue's state,
+     * available transitions, and determine the target status based on GitHub events.
+     *
+     * @returns The fully initialized Issue instance
+     */
     async build() {
         await this.getJiraIssueObject();
         this.beforeStatus = await this.getStatus();
@@ -57566,12 +57657,28 @@ class Issue {
         }
         return this;
     }
+    /**
+     * Determines whether the issue requires a transition based on its current status.
+     *
+     * An issue does not require transition if its current status is in the
+     * project's ignored states list.
+     *
+     * @returns True if the issue should be transitioned, false if it should be skipped
+     */
     requiresTransition() {
         if (this.status === null)
             return false;
         // check for current status vs ignored status
         return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.status);
     }
+    /**
+     * Finds the appropriate transition to apply based on the target status.
+     *
+     * First attempts to match by target status name (toStatus), then falls back
+     * to matching by transition name (status).
+     *
+     * @returns The matching transition object, or undefined if no match is found
+     */
     transitionToApply() {
         if (this.toStatus) {
             const iT = _.find(this.issueTransitions, (t) => {
@@ -57593,6 +57700,14 @@ class Issue {
         }
         return undefined;
     }
+    /**
+     * Executes the transition on the Jira issue.
+     *
+     * If a matching transition is found, applies it to the issue and updates
+     * the status. If no transition is found, logs the available transitions.
+     *
+     * @throws Error if the transition fails and failOnError is enabled in argv
+     */
     async transition() {
         const transitionToApply = this.transitionToApply();
         if (transitionToApply?.name) {
@@ -57618,6 +57733,11 @@ class Issue {
             coreExports.info(this.transitionsLogString.join('\n'));
         }
     }
+    /**
+     * Generates the output data for this issue's transition operation.
+     *
+     * @returns An object containing the issue key, available transitions, and status information
+     */
     async getOutputs() {
         return {
             issue: this.issue,
@@ -57627,15 +57747,32 @@ class Issue {
             beforestatus: this.beforeStatus,
         };
     }
+    /**
+     * Retrieves the current status of the issue.
+     *
+     * @param fresh - If true, fetches the latest issue data from Jira before returning status
+     * @returns The current status name of the issue
+     */
     async getStatus(fresh = false) {
         if (fresh) {
             await this.getJiraIssueObject();
         }
         return _.get(this.issueObject, 'fields.status.name');
     }
+    /**
+     * Updates the issue key for this instance.
+     *
+     * @param issue - The new Jira issue key to set
+     */
     setIssue(issue) {
         this.issue = issue;
     }
+    /**
+     * Fetches the available transitions for this issue from Jira.
+     *
+     * @returns Array of available transitions, or undefined if none exist
+     * @throws Error if no transitions are available and failOnError is enabled
+     */
     async getTransitions() {
         const { transitions } = await this.jira.getIssueTransitions(this.issue);
         if (transitions == null) {
@@ -57645,6 +57782,11 @@ class Issue {
         }
         return transitions;
     }
+    /**
+     * Fetches the full issue object from Jira and caches it locally.
+     *
+     * @returns The Jira issue object with all fields
+     */
     async getJiraIssueObject() {
         this.issueObject = await this.jira.getIssue(this.issue);
         return this.issueObject;
@@ -90730,11 +90872,23 @@ var ClientType;
     ClientType["ServiceDesk"] = "serviceDesk";
 })(ClientType || (ClientType = {}));
 
+/**
+ * Wrapper around the jira.js Version2Client for Jira API interactions.
+ * Provides methods for fetching issues, retrieving transitions, and transitioning issues.
+ */
 class Jira {
+    /** The base URL of the Jira instance (e.g., https://company.atlassian.net) */
     baseUrl;
+    /** The API token used for authentication */
     token;
+    /** The email address associated with the Jira account */
     email;
+    /** The jira.js Version2Client instance for making API calls */
     client;
+    /**
+     * Creates a new Jira client instance.
+     * @param conf - Configuration object containing Jira connection details
+     */
     constructor(conf) {
         this.baseUrl = conf.baseUrl;
         this.token = conf.token;
@@ -90749,6 +90903,15 @@ class Jira {
             },
         });
     }
+    /**
+     * Fetches a Jira issue by its ID or key.
+     * @param issueId - The issue ID or key (e.g., "PROJ-123")
+     * @param query - Optional query parameters to customize the response
+     * @param query.fields - Array of field names to include in the response
+     * @param query.expand - Comma-separated list of entities to expand
+     * @returns The requested Jira issue
+     * @throws Error if the issue does not exist or the request fails
+     */
     async getIssue(issueId, query) {
         const params = {
             issueIdOrKey: issueId,
@@ -90759,12 +90922,25 @@ class Jira {
         }
         return this.client.issues.getIssue(params);
     }
+    /**
+     * Retrieves available workflow transitions for a Jira issue.
+     * @param issueId - The issue ID or key (e.g., "PROJ-123")
+     * @returns The available transitions for the issue
+     * @throws Error if the issue does not exist or the request fails
+     */
     async getIssueTransitions(issueId) {
         const params = {
             issueIdOrKey: issueId,
         };
         return this.client.issues.getTransitions(params);
     }
+    /**
+     * Transitions a Jira issue to a new workflow state.
+     * @param issueId - The issue ID or key (e.g., "PROJ-123")
+     * @param data - The transition data including the target transition ID
+     * @returns An empty object on success
+     * @throws Error if the transition is invalid or the request fails
+     */
     async transitionIssue(issueId, data) {
         const params = {
             issueIdOrKey: issueId,
@@ -90774,11 +90950,28 @@ class Jira {
     }
 }
 
+/**
+ * Main action class that orchestrates Jira issue transitions based on GitHub events.
+ *
+ * This class manages the workflow of transitioning multiple Jira issues in parallel,
+ * using configuration from the action inputs and the GitHub event context to determine
+ * target states.
+ */
 class Action {
+    /** Jira API client instance for making API calls */
     jira;
+    /** Configuration for connecting to Jira (baseUrl, token, email) */
     config;
+    /** Parsed action arguments including issues list and transition configuration */
     argv;
+    /** GitHub event context providing information about the triggering event */
     githubEvent;
+    /**
+     * Creates a new Action instance.
+     *
+     * @param githubEvent - The GitHub Actions context containing event information
+     * @param argv - Parsed action arguments including Jira configuration and issue list
+     */
     constructor(githubEvent, argv) {
         this.jira = new Jira({
             baseUrl: argv.config.baseUrl,
@@ -90789,6 +90982,16 @@ class Action {
         this.argv = argv;
         this.githubEvent = githubEvent;
     }
+    /**
+     * Transitions a single Jira issue to its target state.
+     *
+     * Attempts to transition the issue and returns the output data on success.
+     * On failure, logs the error (or fails the action if failOnError is enabled)
+     * and returns undefined.
+     *
+     * @param issueObj - The Issue instance to transition
+     * @returns The issue output data if successful, undefined if the transition failed
+     */
     async transitionIssue(issueObj) {
         return issueObj
             .transition()
@@ -90807,6 +91010,15 @@ class Action {
             return undefined;
         });
     }
+    /**
+     * Executes the action by processing all specified Jira issues.
+     *
+     * Parses the comma-separated issue list, builds Issue objects for each,
+     * and transitions them in parallel. Reports success/failure counts and
+     * sets the action output with the results.
+     *
+     * @returns True if at least one issue was successfully transitioned, false otherwise
+     */
     async execute() {
         const { argv, jira, githubEvent } = this;
         const issueList = argv.issues.split(',');
@@ -90839,6 +91051,19 @@ class Action {
     }
 }
 
+/**
+ * Retrieves and validates all required inputs for the GitHub Action.
+ *
+ * Collects Jira authentication configuration from environment variables or action inputs,
+ * validates that required values are present, and assembles the complete arguments object
+ * needed to run the action.
+ *
+ * @returns The validated action arguments containing Jira config, issue keys, and settings
+ * @throws {Error} When JIRA_BASE_URL is not defined in environment or action inputs
+ * @throws {Error} When JIRA_API_TOKEN is not defined in environment or action inputs
+ * @throws {Error} When JIRA_USER_EMAIL is not defined in environment or action inputs
+ * @throws {Error} When GITHUB_WORKSPACE environment variable is not defined
+ */
 function getInputs() {
     const result = {};
     const jiraConfig = {};
