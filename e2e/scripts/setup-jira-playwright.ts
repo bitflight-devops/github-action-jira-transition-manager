@@ -355,6 +355,28 @@ async function main() {
       await waitForNavigation(page, beforeLicenseUrl, 60000);
       await page.waitForLoadState('networkidle');
 
+      // IMPORTANT: Jira restarts its plugin system after license submission
+      // This takes ~35 seconds. We need to wait for the admin setup page to appear.
+      console.log('  Waiting for admin setup page (Jira plugin restart takes ~35s)...');
+      let adminPageReady = false;
+      for (let i = 0; i < 20; i++) {
+        // Check if we're on the admin setup page
+        const passwordField = page.locator('input[name="password"], input#password');
+        if ((await passwordField.count()) > 0 && (await passwordField.first().isVisible())) {
+          console.log(`  Admin setup page ready after ${i * 3}s`);
+          adminPageReady = true;
+          break;
+        }
+        console.log(`  [${i * 3}s] Waiting for admin page...`);
+        await page.waitForTimeout(3000);
+        // Refresh to get updated page state
+        await page.reload({ waitUntil: 'networkidle' });
+      }
+
+      if (!adminPageReady) {
+        console.log('  Admin page did not appear after 60s');
+      }
+
       await logPageState(page, 'after-license-submit');
       console.log('  Form inputs on new page:');
       await dumpFormInputs(page);
