@@ -172,22 +172,23 @@ async function main() {
       try {
         await page.goto(JIRA_URL, { timeout: 10000 });
         const title = await page.title();
+        const lowerTitle = title.toLowerCase();
         console.log(`  [${attempts}] Page title: ${title}`);
 
         // Wait for initialization to complete (not just "Initialising")
-        if (title.includes('Initialising') || title.includes('Loading')) {
+        if (lowerTitle.includes('initialis') || lowerTitle.includes('loading')) {
           console.log('  Still initializing, waiting...');
           attempts++;
           await page.waitForTimeout(5000);
           continue;
         }
 
-        // Check for setup wizard or dashboard
+        // Check for setup wizard or dashboard (case-insensitive)
         if (
-          title.includes('Setup') ||
-          title.includes('Set up') ||
-          title.includes('Dashboard') ||
-          title.includes('Log in')
+          lowerTitle.includes('setup') ||
+          lowerTitle.includes('set up') ||
+          lowerTitle.includes('dashboard') ||
+          lowerTitle.includes('log in')
         ) {
           console.log(`  Jira UI ready (title: ${title})`);
           break;
