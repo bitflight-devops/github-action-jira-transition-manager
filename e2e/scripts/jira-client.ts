@@ -216,16 +216,18 @@ export class JiraE2EClient {
 
       // Get the current user info to determine Cloud vs Data Center
       let userInfo: { accountId?: string; name?: string; key?: string; isCloud: boolean };
-      let identifier: string | undefined;
+      let identifier: string;
       try {
         userInfo = await this.getCurrentUserInfo();
         // For Data Center, use 'name' (username) - Jira REST API expects username, not internal key
-        identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
+        const rawIdentifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
 
         // Validate we have the required identifier
-        if (!identifier) {
+        if (!rawIdentifier) {
           throw new Error(`Missing required user identifier: ${userInfo.isCloud ? 'accountId' : 'name/key'}`);
         }
+
+        identifier = rawIdentifier;
 
         // Log only first/last 4 chars to avoid exposing full identifier
         const maskedId =
@@ -251,7 +253,7 @@ export class JiraE2EClient {
       // Try software project first - it supports fixVersions
       // Lead identifier is already validated above
       try {
-        const project = await this.createProjectWithLead({ ...basePayload }, userInfo.isCloud, identifier!);
+        const project = await this.createProjectWithLead({ ...basePayload }, userInfo.isCloud, identifier);
         console.log(`  Created software project ${key}`);
         return {
           id: project.id?.toString() || '',
@@ -273,7 +275,7 @@ export class JiraE2EClient {
             projectTemplateKey: PROJECT_TEMPLATES.BUSINESS_CORE,
           };
 
-          const project = await this.createProjectWithLead(businessPayload, userInfo.isCloud, identifier!);
+          const project = await this.createProjectWithLead(businessPayload, userInfo.isCloud, identifier);
           console.log(`  Created business project ${key}`);
           return {
             id: project.id?.toString() || '',
