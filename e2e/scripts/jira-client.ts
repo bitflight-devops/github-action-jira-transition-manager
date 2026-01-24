@@ -145,6 +145,8 @@ export class JiraE2EClient {
         key,
         name,
         projectTypeKey: 'software' as const,
+        // Data Center requires projectTemplateKey, use Scrum template which supports fixVersions
+        projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-scrum-template',
       };
 
       // Cloud uses leadAccountId, Data Center uses lead (username)
@@ -170,8 +172,18 @@ export class JiraE2EClient {
         // Fall back to business type
         try {
           const businessPayload = userInfo.isCloud
-            ? { ...basePayload, projectTypeKey: 'business' as const, leadAccountId: userInfo.accountId! }
-            : { ...basePayload, projectTypeKey: 'business' as const, lead: userInfo.name! };
+            ? {
+                ...basePayload,
+                projectTypeKey: 'business' as const,
+                projectTemplateKey: 'com.atlassian.jira-core-project-templates:jira-core-simplified-process-control',
+                leadAccountId: userInfo.accountId!,
+              }
+            : {
+                ...basePayload,
+                projectTypeKey: 'business' as const,
+                projectTemplateKey: 'com.atlassian.jira-core-project-templates:jira-core-simplified-process-control',
+                lead: userInfo.name!,
+              };
 
           const project = await this.client.projects.createProject(businessPayload as any);
           console.log(`  Created business project ${key}`);
