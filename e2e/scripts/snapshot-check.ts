@@ -15,26 +15,56 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+/**
+ * Metadata describing a Jira E2E snapshot.
+ * Stored in snapshot-metadata.json alongside volume tar files.
+ */
 interface SnapshotMetadata {
+  /** ISO 8601 timestamp when the snapshot was created */
   createdAt: string;
+  /** Jira version used when creating the snapshot (e.g., "9.17.5") */
   jiraVersion: string;
+  /** MySQL version if using MySQL database */
   mysqlVersion?: string;
-  postgresVersion?: string; // Legacy field for backwards compatibility
+  /** PostgreSQL version if using PostgreSQL database (legacy field for backwards compatibility) */
+  postgresVersion?: string;
+  /** List of Docker volumes included in the snapshot */
   volumes: {
+    /** Docker volume name */
     name: string;
+    /** Filename of the tar archive for this volume */
     file: string;
   }[];
+  /** Optional notes about the snapshot */
   notes?: string;
 }
 
+/**
+ * Result of validating snapshot files.
+ * Contains validation status and diagnostic information.
+ */
 interface CheckResult {
+  /** Whether all required snapshot files exist and are readable */
   valid: boolean;
+  /** Parsed snapshot metadata if available */
   metadata?: SnapshotMetadata;
+  /** List of files that are missing or invalid */
   missingFiles: string[];
+  /** Total size of all snapshot files in megabytes */
   totalSizeMB: number;
+  /** Age of the snapshot in hours since creation */
   ageHours: number;
 }
 
+/**
+ * Validates the existence and integrity of Jira E2E snapshot files.
+ *
+ * Checks for the presence of the metadata file and all referenced volume archives.
+ * Calculates total size and age of the snapshot.
+ *
+ * @param inputDir - Directory containing snapshot files
+ * @returns Validation result with status, metadata, and diagnostic information
+ */
 function checkSnapshots(inputDir: string): CheckResult {
   const result: CheckResult = {
     valid: false,
@@ -86,6 +116,12 @@ function checkSnapshots(inputDir: string): CheckResult {
   return result;
 }
 
+/**
+ * Formats a duration in hours as a human-readable relative time string.
+ *
+ * @param hours - Number of hours to format
+ * @returns Human-readable string like "less than an hour ago", "5 hours ago", or "3 days ago"
+ */
 function formatAge(hours: number): string {
   if (hours < 1) return 'less than an hour ago';
   if (hours < 24) return `${hours} hours ago`;
@@ -94,6 +130,15 @@ function formatAge(hours: number): string {
   return `${days} days ago`;
 }
 
+/**
+ * Main entry point for the snapshot check CLI.
+ *
+ * Parses command-line arguments, validates snapshots, and outputs status information.
+ * Supports `--input-dir <dir>` to specify snapshot directory and `--quiet`/`-q` for silent mode.
+ *
+ * @returns Promise that resolves when check is complete
+ * @throws Exits process with code 0 if snapshots are valid, 1 if invalid or missing
+ */
 async function main(): Promise<void> {
   // Parse arguments
   const args = process.argv.slice(2);

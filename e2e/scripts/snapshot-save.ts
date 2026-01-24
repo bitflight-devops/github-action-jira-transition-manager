@@ -35,11 +35,24 @@ const defaultConfig: SnapshotConfig = {
   composeProject: 'docker', // Docker Compose project name (from directory name)
 };
 
+/**
+ * Constructs the full Docker Compose volume name from project and volume names.
+ * Docker Compose v2 uses the naming convention: <project>_<volume>
+ *
+ * @param projectName - The Docker Compose project name (typically the directory name)
+ * @param volumeName - The short volume name as defined in docker-compose.yml
+ * @returns The fully qualified Docker volume name
+ */
 function getVolumeFullName(projectName: string, volumeName: string): string {
   // Docker Compose v2 naming: <project>_<volume>
   return `${projectName}_${volumeName}`;
 }
 
+/**
+ * Checks if Docker is installed and accessible on the system.
+ *
+ * @returns True if Docker is available, false otherwise
+ */
 function checkDocker(): boolean {
   try {
     execSync('docker --version', { stdio: 'pipe' });
@@ -49,6 +62,12 @@ function checkDocker(): boolean {
   }
 }
 
+/**
+ * Checks if a Docker volume exists by attempting to inspect it.
+ *
+ * @param volumeName - The full name of the Docker volume to check
+ * @returns True if the volume exists, false otherwise
+ */
 function volumeExists(volumeName: string): boolean {
   try {
     const result = spawnSync('docker', ['volume', 'inspect', volumeName], {
@@ -60,6 +79,11 @@ function volumeExists(volumeName: string): boolean {
   }
 }
 
+/**
+ * Stops the Docker Compose containers to ensure data consistency during snapshot.
+ * This prevents data corruption by ensuring no writes occur during the archive process.
+ * If containers are not running, a note is logged but execution continues.
+ */
 function stopContainers(): void {
   console.log('Stopping containers to ensure data consistency...');
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
@@ -76,6 +100,14 @@ function stopContainers(): void {
   }
 }
 
+/**
+ * Saves a Docker volume to a compressed tar.gz archive file.
+ * Uses an Alpine container to create the archive from the volume contents.
+ *
+ * @param volumeName - The full name of the Docker volume to save
+ * @param outputPath - The absolute path where the tar.gz archive will be written
+ * @returns True if the volume was saved successfully, false on failure
+ */
 function saveVolume(volumeName: string, outputPath: string): boolean {
   console.log(`Saving volume ${volumeName} to ${path.basename(outputPath)}...`);
 
@@ -115,6 +147,13 @@ function saveVolume(volumeName: string, outputPath: string): boolean {
   }
 }
 
+/**
+ * Creates a metadata JSON file describing the saved snapshots.
+ * The metadata includes version information, timestamps, and volume details
+ * to help identify and validate snapshots during restoration.
+ *
+ * @param config - The snapshot configuration containing output directory and volume info
+ */
 function createMetadata(config: SnapshotConfig): void {
   const metadata = {
     createdAt: new Date().toISOString(),
@@ -132,6 +171,15 @@ function createMetadata(config: SnapshotConfig): void {
   console.log(`Metadata saved to ${metadataPath}`);
 }
 
+/**
+ * Main entry point for the snapshot save script.
+ * Orchestrates the snapshot process: validates Docker availability, stops containers,
+ * saves each configured volume to a tar.gz archive, and creates metadata.
+ *
+ * Supports the --output-dir argument to specify a custom output directory.
+ *
+ * @throws Exits with code 1 if Docker is unavailable or any volume fails to save
+ */
 async function main(): Promise<void> {
   console.log('=== Jira E2E Snapshot Save ===\n');
 

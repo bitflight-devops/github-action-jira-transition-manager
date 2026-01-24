@@ -9,6 +9,19 @@ import { JiraE2EClient } from './jira-client';
 // Number of stack trace lines to show in error output
 const STACK_TRACE_LINES = 5;
 
+/**
+ * Seeds Jira with minimal test data required for E2E testing.
+ *
+ * This function is idempotent and safe to run multiple times. It performs
+ * the following setup steps in order:
+ * 1. Configures screens to include fixVersions field
+ * 2. Ensures the test project exists
+ * 3. Ensures the initial version exists
+ * 4. Ensures a test issue exists with the initial version
+ *
+ * @returns A promise that resolves when seeding is complete
+ * @throws Error if project, version, or issue creation fails
+ */
 async function seedJira(): Promise<void> {
   const config = getE2EConfig();
   const client = new JiraE2EClient(config);

@@ -7,14 +7,31 @@ import type { Args } from './@types';
 import type Jira from './Jira';
 import TransitionEventManager from './TransitionEventManager';
 
+/**
+ * Output structure representing the result of an issue transition operation.
+ */
 export interface IssueOutput {
+  /** The Jira issue key (e.g., "PROJ-123") */
   issue: string;
+  /** Names of available transitions for the issue */
   names: string[];
+  /** IDs of available transitions for the issue */
   ids: string[];
+  /** Current status of the issue after any transition */
   status: string;
+  /** Status of the issue before any transition was applied */
   beforestatus: string;
 }
+
+/**
+ * Represents a Jira issue and handles its workflow transitions.
+ *
+ * This class encapsulates all operations related to a single Jira issue,
+ * including fetching issue data, determining available transitions,
+ * and applying state changes based on GitHub event mappings.
+ */
 export default class Issue {
+  /** The Jira issue key (e.g., "PROJ-123") */
   issue: string;
 
   projectName: string;
@@ -41,6 +58,14 @@ export default class Issue {
 
   transitionEventManager: TransitionEventManager;
 
+  /**
+   * Creates a new Issue instance.
+   *
+   * @param issue - The Jira issue key (e.g., "PROJ-123")
+   * @param jira - The Jira client instance for API interactions
+   * @param argv - Command-line arguments and configuration options
+   * @param context - The GitHub Actions context containing event information
+   */
   constructor(issue: string, jira: Jira, argv: Args, context: Context) {
     this.issue = issue;
     const issuePattern = /^(?<projectName>[A-Z]{2,10})-\d+$/i;
@@ -51,6 +76,14 @@ export default class Issue {
     this.transitionEventManager = new TransitionEventManager(context, jira, argv);
   }
 
+  /**
+   * Initializes the issue by fetching data from Jira and preparing transition information.
+   *
+   * This method must be called after construction to populate the issue's state,
+   * available transitions, and determine the target status based on GitHub events.
+   *
+   * @returns The fully initialized Issue instance
+   */
   async build(): Promise<Issue> {
     await this.getJiraIssueObject();
     this.beforeStatus = await this.getStatus();
@@ -78,12 +111,28 @@ export default class Issue {
     return this;
   }
 
+  /**
+   * Determines whether the issue requires a transition based on its current status.
+   *
+   * An issue does not require transition if its current status is in the
+   * project's ignored states list.
+   *
+   * @returns True if the issue should be transitioned, false if it should be skipped
+   */
   requiresTransition(): boolean {
     if (this.status === null) return false;
     // check for current status vs ignored status
     return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.status);
   }
 
+  /**
+   * Finds the appropriate transition to apply based on the target status.
+   *
+   * First attempts to match by target status name (toStatus), then falls back
+   * to matching by transition name (status).
+   *
+   * @returns The matching transition object, or undefined if no match is found
+   */
   transitionToApply(): Version2Models.IssueTransition | undefined {
     if (this.toStatus) {
       const iT = _.find(this.issueTransitions, (t) => {
@@ -106,6 +155,14 @@ export default class Issue {
     return undefined;
   }
 
+  /**
+   * Executes the transition on the Jira issue.
+   *
+   * If a matching transition is found, applies it to the issue and updates
+   * the status. If no transition is found, logs the available transitions.
+   *
+   * @throws Error if the transition fails and failOnError is enabled in argv
+   */
   async transition(): Promise<void> {
     const transitionToApply = this.transitionToApply();
 
@@ -131,6 +188,11 @@ export default class Issue {
     }
   }
 
+  /**
+   * Generates the output data for this issue's transition operation.
+   *
+   * @returns An object containing the issue key, available transitions, and status information
+   */
   async getOutputs(): Promise<IssueOutput> {
     return {
       issue: this.issue,
@@ -141,6 +203,12 @@ export default class Issue {
     };
   }
 
+  /**
+   * Retrieves the current status of the issue.
+   *
+   * @param fresh - If true, fetches the latest issue data from Jira before returning status
+   * @returns The current status name of the issue
+   */
   async getStatus(fresh = false): Promise<string> {
     if (fresh) {
       await this.getJiraIssueObject();
@@ -148,10 +216,21 @@ export default class Issue {
     return _.get(this.issueObject, 'fields.status.name') as string;
   }
 
+  /**
+   * Updates the issue key for this instance.
+   *
+   * @param issue - The new Jira issue key to set
+   */
   setIssue(issue: string): void {
     this.issue = issue;
   }
 
+  /**
+   * Fetches the available transitions for this issue from Jira.
+   *
+   * @returns Array of available transitions, or undefined if none exist
+   * @throws Error if no transitions are available and failOnError is enabled
+   */
   async getTransitions(): Promise<Version2Models.IssueTransition[] | undefined> {
     const { transitions } = await this.jira.getIssueTransitions(this.issue);
 
@@ -162,10 +241,16 @@ export default class Issue {
     return transitions;
   }
 
+  /**
+   * Fetches the full issue object from Jira and caches it locally.
+   *
+   * @returns The Jira issue object with all fields
+   */
   async getJiraIssueObject(): Promise<Version2Models.Issue> {
     this.issueObject = await this.jira.getIssue(this.issue);
     return this.issueObject;
   }
 }
 
+/** Array type alias for multiple Issue instances */
 export type Issues = Issue[];
