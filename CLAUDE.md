@@ -149,6 +149,26 @@ yarn build     # Build action + E2E scripts
 yarn build:e2e # Build only E2E scripts
 ```
 
+## Development Guidelines
+
+### When Fixing Bugs
+
+When you find and fix a bug, always:
+
+1. **Search for similar patterns** - Use grep/glob to find other instances of the same anti-pattern
+2. **Fix all occurrences** - Don't just fix the one that failed, fix all similar issues
+3. **Document the pattern** - If it's a recurring issue, add it to a checklist below
+
+### Common Playwright Issues (Checklist)
+
+When writing or reviewing Playwright code, check for:
+
+- [ ] **Multi-element selectors without `.first()`** - `page.click('a, b')` fails if both match
+- [ ] **Case-sensitive text matching** - Use regex `/text/i` instead of exact strings
+- [ ] **Ambiguous selectors** - Multiple elements with same name (visible + hidden)
+- [ ] **Missing `.catch()` on `.isVisible()`** - Can throw if element doesn't exist
+- [ ] **Hardcoded timeouts** - Use `waitForLoadState` or `waitForSelector` instead
+
 ## Links
 
 - haxqer/jira image: https://github.com/haxqer/jira
