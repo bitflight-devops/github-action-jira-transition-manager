@@ -173,7 +173,7 @@ async function main() {
     if (hasAppProps) {
       console.log('  Setting properties...');
       await page.fill('input[name="title"]', 'Jira E2E');
-      await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+      await page.locator('button:has-text("Next"), button:has-text("Continue"), input[type="submit"]').first().click();
       await page.waitForLoadState('networkidle');
     } else {
       console.log('  Skipped (Not found).');
@@ -209,7 +209,10 @@ async function main() {
         // This ensures we only look for logs generated AFTER this moment.
         const restartTimestamp = new Date().toISOString();
 
-        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+        await page
+          .locator('button:has-text("Next"), button:has-text("Continue"), input[type="submit"]')
+          .first()
+          .click();
 
         // WAIT FOR DOCKER RESTART (TIMESTAMP BASED)
         console.log(`  Waiting for Plugin System Restart (Logs since ${restartTimestamp})...`);
@@ -280,18 +283,31 @@ async function main() {
         if (await page.locator('input[name="email"]').isVisible())
           await page.locator('input[name="email"]').first().fill('admin@example.com');
 
-        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+        await page
+          .locator('button:has-text("Next"), button:has-text("Continue"), input[type="submit"]')
+          .first()
+          .click();
         await page.waitForLoadState('networkidle');
         continue;
       }
 
       // PRIORITY 3: Fallback (Click Next/Finish)
       // If we are on an unknown page (e.g. "Welcome" or "Language"), try to advance.
-      const anyNext = page.locator('button:has-text("Next"), button:has-text("Finish"), input[type="submit"]');
-      if (await anyNext.isVisible()) {
-        console.log('  [State: Unknown] Clicking generic Next/Finish...');
-        await anyNext.first().click();
-        await page.waitForLoadState('networkidle');
+      // Use :visible pseudo-class to avoid strict mode violations from hidden elements
+      const nextButtons = page.locator(
+        'button:has-text("Next"):visible, button:has-text("Finish"):visible, button:has-text("Continue"):visible, input[type="submit"]:visible',
+      );
+      const buttonCount = await nextButtons.count();
+      if (buttonCount > 0) {
+        // Filter to truly visible buttons (not just CSS-visible but display:none check)
+        const firstVisible = nextButtons.first();
+        if (await firstVisible.isVisible().catch(() => false)) {
+          console.log(`  [State: Unknown] Clicking generic navigation button (found ${buttonCount})...`);
+          await firstVisible.click();
+          await page.waitForLoadState('networkidle');
+        } else {
+          console.log('  [State: Unknown] Buttons found but not visible. Waiting...');
+        }
       } else {
         console.log('  [State: Unknown] No navigation buttons found. Waiting...');
       }
