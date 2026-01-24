@@ -145,6 +145,7 @@ jobs:
         if: failure()
         run: |
           mkdir -p e2e/artifacts
+          cp -r /tmp/jira-setup* e2e/artifacts/ 2>/dev/null || true
 
           echo "=========================================="
           echo "=== DOCKER CONTAINER STATUS ==="
