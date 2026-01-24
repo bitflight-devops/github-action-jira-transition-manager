@@ -389,16 +389,7 @@ async function main() {
       await logPageState(page, 'before-license-submit');
 
       await page.locator('button:has-text("Next"), input[type="submit"], #setupLicenseButton').first().click();
-      console.log('  Clicked submit, waiting for navigation...');
-
-      // Wait for URL to change (indicates page transition)
-      await waitForNavigation(page, beforeLicenseUrl, 15000);
-      await page.waitForLoadState('networkidle');
-
-      // IMPORTANT: Jira restarts its plugin system after license submission
-      // This takes ~35 seconds. Watch Docker logs for completion instead of blind polling.
-      console.log('  Waiting for Jira plugin system restart (~35s)...');
-      console.log('  Watching Docker logs for "Plugin System Started" pattern...');
+      console.log('  Clicked submit - watching Docker logs for plugin system restart...');
 
       const restartResult = waitForPluginSystemRestart(90000); // 90s max
       if (!restartResult.ready) {
@@ -419,14 +410,14 @@ async function main() {
         }
       }
 
-      // Wait for admin page to be ready (password field visible) - up to 60s
+      // Wait for admin page to be ready (password field visible) - up to 15s
       console.log('  Waiting for admin setup form to appear...');
       const passwordField = page.locator('input[name="password"], input#password');
       try {
         await passwordField.first().waitFor({ state: 'visible', timeout: 15000 });
         console.log('  Admin setup form ready');
       } catch {
-        console.log('  Admin form not visible after 60s, continuing anyway...');
+        console.log('  Admin form not visible after 15s, continuing anyway...');
       }
 
       await logPageState(page, 'after-license-submit');
