@@ -90,7 +90,6 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
   ];
 
   let seenStarting = false;
-  let lastLogLine = '';
 
   while (Date.now() - startTime < timeoutMs) {
     const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -116,18 +115,7 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
       return { ready: true };
     }
 
-    // Show latest unique log line for progress
-    const lines = logs.split('\n').filter((l) => l.trim());
-    const latest = lines[lines.length - 1] || '';
-    if (latest !== lastLogLine && latest.length > 10) {
-      lastLogLine = latest;
-      // Show progress every 5 seconds, or if it's a notable line
-      if (elapsed % 5 === 0 || latest.includes('Plugin') || latest.includes('Starting')) {
-        const shortLine = latest.substring(0, 100);
-        console.log(`  [${elapsed}s] ${shortLine}`);
-      }
-    }
-
+    // Silent wait - only log on state changes (starting detected, ready, or error)
     execSync('sleep 2');
   }
 
@@ -199,47 +187,31 @@ function waitForJiraStart(timeoutMs: number): { ready: boolean; error?: string }
   ];
 
   let lastLogHash = '';
-  let logLineCount = 0;
 
   while (Date.now() - startTime < timeoutMs) {
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -30`);
-    const logHash = logs.slice(-200); // Simple change detection
+    const logHash = logs.slice(-200);
 
-    // Only process if logs changed
     if (logHash !== lastLogHash) {
       lastLogHash = logHash;
 
-      // Check for success
       for (const pattern of readyPatterns) {
         if (pattern.test(logs)) {
-          console.log(`  [${elapsed}s] ✓ ${pattern.source}`);
+          console.log(`  ✓ Ready (${elapsed}s)`);
           return { ready: true };
         }
       }
 
-      // Check for errors - fail fast
       for (const { pattern, msg } of errorPatterns) {
         if (pattern.test(logs)) {
-          console.log(`  [${elapsed}s] ✗ ${msg}`);
-          console.log('');
-          console.log('  === Docker logs (error detected) ===');
-          console.log(logs);
-          console.log('  =====================================');
+          console.log(`  ✗ ${msg}`);
           return { ready: false, error: msg };
         }
       }
-
-      // Show latest log line
-      const lines = logs.split('\n').filter((l) => l.trim());
-      const latest = lines[lines.length - 1] || '';
-      if (latest && logLineCount++ % 3 === 0) {
-        // Show every 3rd unique log
-        console.log(`  [${elapsed}s] ${latest.substring(0, 120)}`);
-      }
     }
 
-    execSync('sleep 1'); // Check every 1 second for faster response
+    execSync('sleep 1');
   }
 
   // Timeout

@@ -109,21 +109,32 @@ export class JiraE2EClient {
       return await this.request<JiraProject>(`/rest/api/2/project/${key}`);
     } catch {
       // Project doesn't exist, create it
-      // Ensure we have a valid lead
       const lead = this.config.jira.auth.username || this.config.jira.auth.email || 'admin';
 
-      return this.request<JiraProject>('/rest/api/2/project', {
-        method: 'POST',
-        body: JSON.stringify({
-          key,
-          name,
-          projectTypeKey: 'software',
-          lead,
-          // Use simplified template that's widely available
-          // Note: Requires Jira Software, not available in Jira Core
-          projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-simplified-basic-software-development-template',
-        }),
-      });
+      // Try business project type first (available in all Jira editions)
+      // No template needed - creates a basic project with Task issue type
+      try {
+        return await this.request<JiraProject>('/rest/api/2/project', {
+          method: 'POST',
+          body: JSON.stringify({
+            key,
+            name,
+            projectTypeKey: 'business',
+            lead,
+          }),
+        });
+      } catch {
+        // Fall back to software type without template
+        return this.request<JiraProject>('/rest/api/2/project', {
+          method: 'POST',
+          body: JSON.stringify({
+            key,
+            name,
+            projectTypeKey: 'software',
+            lead,
+          }),
+        });
+      }
     }
   }
 
