@@ -4,15 +4,13 @@
  * This approach handles XSRF automatically since it uses a real browser.
  */
 import { execSync } from 'child_process';
-import { chromium } from 'playwright';
+import { chromium, Page } from 'playwright';
 
 const JIRA_URL = process.env.JIRA_URL || 'http://localhost:8080';
 const CONTAINER_NAME = process.env.JIRA_CONTAINER || 'jira-e2e';
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'admin';
 const SCREENSHOT_DIR = '/tmp/jira-setup';
-
-import { Page } from 'playwright';
 
 /**
  * Log page state for debugging - call this before any action that might fail
@@ -23,14 +21,13 @@ async function logPageState(page: Page, stepName: string): Promise<void> {
   console.log(`  [${stepName}] URL: ${url}`);
   console.log(`  [${stepName}] Title: ${title}`);
 
-  // Take screenshot
   const screenshotPath = `${SCREENSHOT_DIR}/${stepName.replace(/\s+/g, '-').toLowerCase()}.png`;
   await page.screenshot({ path: screenshotPath });
   console.log(`  [${stepName}] Screenshot: ${screenshotPath}`);
 }
 
 /**
- * Dump all form inputs on the page
+ * Dump all form inputs on the page (returns names for detection)
  */
 async function dumpFormInputs(page: Page): Promise<string[]> {
   const inputs = await page.locator('input, textarea, select').all();
@@ -39,100 +36,11 @@ async function dumpFormInputs(page: Page): Promise<string[]> {
   for (const input of inputs) {
     const name = await input.getAttribute('name');
     const id = await input.getAttribute('id');
-    const type = await input.getAttribute('type');
-    const visible = await input.isVisible();
     if (name || id) {
-      const label = name || id || 'unnamed';
-      names.push(label);
-      console.log(`    - ${label} (type=${type}, visible=${visible})`);
+      names.push(name || id || 'unnamed');
     }
   }
   return names;
-}
-
-/**
- * Wait for URL to change from current, with logging
- */
-async function waitForNavigation(page: Page, fromUrl: string, timeout = 30000): Promise<boolean> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const currentUrl = page.url();
-    if (currentUrl !== fromUrl) {
-      console.log(`  Navigation: ${fromUrl} -> ${currentUrl}`);
-      return true;
-    }
-    await page.waitForTimeout(500);
-  }
-  console.log(`  Navigation timeout: still on ${fromUrl}`);
-  return false;
-}
-
-/**
- * Watch Docker logs for plugin system restart completion
- * This happens after license submission and takes ~35 seconds
- *
- * Sequence to watch for:
- * 1. "Starting the JIRA Plugin System" - restart initiated
- * 2. "Plugin System Started" - restart complete, admin page ready
- */
-function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?: string } {
-  const startTime = Date.now();
-
-  // Patterns to track progress
-  const startingPattern = /Starting the JIRA Plugin System/i;
-  const readyPattern = /Plugin System Started/i;
-
-  // Error patterns - fail fast
-  const errorPatterns = [
-    { pattern: /FATAL|ERROR.*Exception/i, msg: 'Fatal error during restart' },
-    { pattern: /OutOfMemoryError/i, msg: 'Out of memory' },
-    { pattern: /Unable to start/i, msg: 'Startup failure' },
-  ];
-
-  let seenStarting = false;
-
-  while (Date.now() - startTime < timeoutMs) {
-    const elapsed = Math.round((Date.now() - startTime) / 1000);
-    // Only look at logs from the last 5 seconds to avoid matching old messages
-    const logs = execQuiet(`docker logs --since 5s ${CONTAINER_NAME} 2>&1`);
-
-    // Log what we're seeing (trimmed, one line per poll)
-    if (logs.trim()) {
-      const lastLine = logs.trim().split('\n').pop() || '';
-      // Show abbreviated log line (first 100 chars)
-      const abbrev = lastLine.length > 100 ? lastLine.substring(0, 100) + '...' : lastLine;
-      console.log(`  [${elapsed}s] ${abbrev}`);
-    }
-
-    // Check for errors first
-    for (const { pattern, msg } of errorPatterns) {
-      if (pattern.test(logs)) {
-        console.log(`  [${elapsed}s] ✗ ${msg}`);
-        return { ready: false, error: msg };
-      }
-    }
-
-    // Check for "Starting" pattern
-    if (!seenStarting && startingPattern.test(logs)) {
-      seenStarting = true;
-      console.log(`  [${elapsed}s] ⏳ Plugin System restart initiated...`);
-    }
-
-    // Check for "Started" pattern - success!
-    if (readyPattern.test(logs)) {
-      console.log(`  [${elapsed}s] ✓ Plugin System Started`);
-      return { ready: true };
-    }
-
-    execSync('sleep 2');
-  }
-
-  // Timeout - show last 20 lines of logs for debugging
-  console.log('  === Docker logs at timeout ===');
-  console.log(execQuiet(`docker logs --tail 20 ${CONTAINER_NAME} 2>&1`));
-  console.log('  ==============================');
-
-  return { ready: false, error: 'Timeout waiting for plugin system restart' };
 }
 
 function exec(cmd: string, timeout = 30000): string {
@@ -148,13 +56,63 @@ function execQuiet(cmd: string): string {
 }
 
 /**
+ * Watch Docker logs for plugin system restart completion
+ */
+function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?: string } {
+  const startTime = Date.now();
+  const startingPattern = /Starting the JIRA Plugin System/i;
+  const readyPattern = /Plugin System Started/i;
+  const errorPatterns = [
+    { pattern: /FATAL|ERROR.*Exception/i, msg: 'Fatal error during restart' },
+    { pattern: /OutOfMemoryError/i, msg: 'Out of memory' },
+    { pattern: /Unable to start/i, msg: 'Startup failure' },
+  ];
+
+  let seenStarting = false;
+
+  while (Date.now() - startTime < timeoutMs) {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const logs = execQuiet(`docker logs --since 5s ${CONTAINER_NAME} 2>&1`);
+
+    if (logs.trim()) {
+      const lastLine = logs.trim().split('\n').pop() || '';
+      const abbrev = lastLine.length > 100 ? lastLine.substring(0, 100) + '...' : lastLine;
+      console.log(`  [${elapsed}s] ${abbrev}`);
+    }
+
+    for (const { pattern, msg } of errorPatterns) {
+      if (pattern.test(logs)) {
+        return { ready: false, error: msg };
+      }
+    }
+
+    if (!seenStarting && startingPattern.test(logs)) {
+      seenStarting = true;
+      console.log(`  [${elapsed}s] ⏳ Plugin System restart initiated...`);
+    }
+
+    if (readyPattern.test(logs)) {
+      console.log(`  [${elapsed}s] ✓ Plugin System Started`);
+      return { ready: true };
+    }
+
+    execSync('sleep 2');
+  }
+
+  console.log('  === Docker logs at timeout ===');
+  console.log(execQuiet(`docker logs --tail 20 ${CONTAINER_NAME} 2>&1`));
+  console.log('  ==============================');
+
+  return { ready: false, error: 'Timeout waiting for plugin system restart' };
+}
+
+/**
  * Generate license using atlassian-agent.jar
  */
 function generateLicense(serverId: string): string {
   const cmd = `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n "Test" -o "Test Org" -s "${serverId}"`;
   const output = exec(cmd, 60000);
 
-  // Extract license from output (it's base64 encoded, multiple lines)
   const lines = output.split('\n');
   const licenseLines: string[] = [];
   let inLicense = false;
@@ -171,32 +129,25 @@ function generateLicense(serverId: string): string {
       licenseLines.push(line.trim());
     }
   }
-
   return licenseLines.join('\n');
 }
 
 /**
- * Watch Docker logs for Jira startup - fail fast on errors
+ * Watch Docker logs for Jira startup
  */
 function waitForJiraStart(timeoutMs: number): { ready: boolean; error?: string } {
   const startTime = Date.now();
-
-  // Success patterns
   const readyPatterns = [
     /Jira is ready to serve/i,
     /You can now access JIRA/i,
     /Server startup in \d+/i,
     /JiraStartupLogger.*started/i,
   ];
-
-  // Error patterns - fail fast when detected
   const errorPatterns = [
     { pattern: /FATAL|ERROR.*Exception/i, msg: 'Fatal error in Jira startup' },
     { pattern: /Cannot connect to database/i, msg: 'Database connection failed' },
     { pattern: /Unable to start Jira/i, msg: 'Jira startup failed' },
     { pattern: /OutOfMemoryError/i, msg: 'Out of memory' },
-    { pattern: /Address already in use/i, msg: 'Port conflict' },
-    { pattern: /Shutting down/i, msg: 'Jira is shutting down' },
   ];
 
   let lastLogHash = '';
@@ -208,14 +159,12 @@ function waitForJiraStart(timeoutMs: number): { ready: boolean; error?: string }
 
     if (logHash !== lastLogHash) {
       lastLogHash = logHash;
-
       for (const pattern of readyPatterns) {
         if (pattern.test(logs)) {
           console.log(`  ✓ Ready (${elapsed}s)`);
           return { ready: true };
         }
       }
-
       for (const { pattern, msg } of errorPatterns) {
         if (pattern.test(logs)) {
           console.log(`  ✗ ${msg}`);
@@ -223,16 +172,8 @@ function waitForJiraStart(timeoutMs: number): { ready: boolean; error?: string }
         }
       }
     }
-
     execSync('sleep 1');
   }
-
-  // Timeout
-  console.log('');
-  console.log('  === Docker logs (timeout) ===');
-  console.log(execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -30`));
-  console.log('  ==============================');
-
   return { ready: false, error: 'Timeout waiting for Jira startup' };
 }
 
@@ -241,34 +182,17 @@ async function main() {
   console.log('Jira Setup (Playwright Browser Automation)');
   console.log('============================================================');
   console.log(`Base URL: ${JIRA_URL}`);
-  console.log(`Screenshots: ${SCREENSHOT_DIR}`);
-  console.log('');
 
-  // Create screenshot directory
   execQuiet(`mkdir -p ${SCREENSHOT_DIR}`);
 
   // Step 1: Wait for Jira to start
   console.log('Step 1: Waiting for Jira to start...');
-  console.log(`  Container: ${CONTAINER_NAME}`);
-  console.log('  Timeout: 120s (expect ~15s, fail-fast on errors)');
-
-  // Verify container exists
-  const containerCheck = execQuiet(`docker ps --format '{{.Names}}' | grep -w ${CONTAINER_NAME}`);
-  if (!containerCheck) {
-    console.log(`  ERROR: Container ${CONTAINER_NAME} not found!`);
-    console.log('  Available containers:');
-    console.log(execQuiet('docker ps --format "  - {{.Names}}"'));
-    process.exit(1);
-  }
-  console.log(`  Container ${CONTAINER_NAME} is running`);
-
-  const startResult = waitForJiraStart(120000); // 2 min max, should be ~15s
+  const startResult = waitForJiraStart(120000);
   if (!startResult.ready) {
-    console.log(`  ✗ ${startResult.error || 'Failed to start'}`);
+    console.log(`  ✗ ${startResult.error}`);
     process.exit(1);
   }
-  console.log('✓ Jira startup detected');
-  console.log('');
+  console.log('✓ Jira startup detected\n');
 
   // Step 2: Launch browser
   console.log('Step 2: Launching browser...');
@@ -277,7 +201,7 @@ async function main() {
   const page = await context.newPage();
 
   try {
-    // Step 3: Wait for Jira web UI to finish initializing
+    // Step 3: Wait for Jira web UI
     console.log('Step 3: Waiting for Jira web UI...');
     let attempts = 0;
     while (attempts < 60) {
@@ -285,17 +209,14 @@ async function main() {
         await page.goto(JIRA_URL, { timeout: 10000 });
         const title = await page.title();
         const lowerTitle = title.toLowerCase();
-        console.log(`  [${attempts}] Page title: ${title}`);
 
-        // Wait for initialization to complete (not just "Initialising")
         if (lowerTitle.includes('initialis') || lowerTitle.includes('loading')) {
-          console.log('  Still initializing, waiting...');
+          console.log(`  [${attempts}] Initializing...`);
           attempts++;
           await page.waitForTimeout(5000);
           continue;
         }
 
-        // Check for setup wizard or dashboard (case-insensitive)
         if (
           lowerTitle.includes('setup') ||
           lowerTitle.includes('set up') ||
@@ -305,35 +226,18 @@ async function main() {
           console.log(`  Jira UI ready (title: ${title})`);
           break;
         }
-
-        // Also check page content for setup indicators
-        const pageContent = await page.content();
-        if (
-          pageContent.includes('SetupLicense') ||
-          pageContent.includes('setupLicenseKey') ||
-          pageContent.includes('Server ID')
-        ) {
-          console.log('  Found setup page content');
-          break;
-        }
-      } catch (e) {
-        console.log(`  [${attempts}] Connection error: ${(e as Error).message}`);
+      } catch {
+        // ignore connection errors
       }
       attempts++;
       await page.waitForTimeout(3000);
     }
 
-    if (attempts >= 60) {
-      await page.screenshot({ path: '/tmp/jira-timeout.png' });
-      console.log('  Screenshot saved to /tmp/jira-timeout.png');
-      throw new Error('Jira web UI did not become available');
-    }
+    if (attempts >= 60) throw new Error('Jira web UI did not become available');
     console.log('');
 
-    // Step 4: Handle "Set Application Properties" if present
+    // Step 4: Handle "Set Application Properties"
     console.log('Step 4: Checking for Application Properties page...');
-    await page.waitForTimeout(2000);
-
     const hasAppProperties = await page
       .getByText(/set up application properties/i)
       .isVisible()
@@ -343,162 +247,108 @@ async function main() {
       await page.fill('input[name="title"]', 'Jira E2E');
       await page.locator('#next, button:has-text("Next"), input[type="submit"]').first().click();
       await page.waitForLoadState('networkidle');
-    } else {
-      console.log('  Application Properties already configured or skipped');
     }
     console.log('');
 
     // Step 5: Handle License page
     console.log('Step 5: Handling License page...');
     await page.waitForTimeout(2000);
-
-    // Log current page info for debugging
-    const currentUrl = page.url();
-    const currentTitle = await page.title();
-    console.log(`  Current URL: ${currentUrl}`);
-    console.log(`  Current title: ${currentTitle}`);
-
-    // Check if we're on the license page - use specific textarea selector
-    // Note: Page has both textarea#licenseKey and input#setupLicenseKey, we want the visible textarea
     const licenseTextarea = page.locator('textarea[name="licenseKey"]');
-    const hasLicensePage = (await licenseTextarea.count()) > 0;
-
-    // Also check for license-related text in page
-    const pageContent = await page.content();
-    const hasLicenseText =
-      pageContent.includes('license') || pageContent.includes('License') || pageContent.includes('Server ID');
-
-    console.log(`  License textarea found: ${hasLicensePage}`);
-    console.log(`  License text in page: ${hasLicenseText}`);
-
-    if (hasLicensePage || hasLicenseText) {
-      // Get server ID from page
-      console.log('  Extracting server ID...');
+    if ((await licenseTextarea.count()) > 0) {
+      console.log('  License page found. Generating license...');
       const pageContent = await page.content();
       const serverIdMatch =
         pageContent.match(/Server ID[:\s]*<[^>]*>([A-Z0-9-]+)/i) ||
         pageContent.match(/([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
 
-      if (!serverIdMatch) {
-        throw new Error('Could not find server ID on license page');
+      if (serverIdMatch) {
+        const license = generateLicense(serverIdMatch[1]);
+        await licenseTextarea.fill(license);
+        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+        console.log('  License submitted. Waiting for plugin restart...');
+
+        const restartResult = waitForPluginSystemRestart(90000);
+        if (!restartResult.ready) throw new Error(`Plugin restart failed: ${restartResult.error}`);
+
+        // After "Plugin System Started", redirect happens within seconds
+        await page.waitForURL((url) => !url.href.includes('SetupLicense'), { timeout: 15000 });
+        console.log(`  Redirected to: ${page.url()}`);
       }
-
-      const serverId = serverIdMatch[1];
-      console.log(`  Server ID: ${serverId}`);
-
-      // Generate license
-      console.log('  Generating license...');
-      const license = generateLicense(serverId);
-      if (!license) {
-        throw new Error('Failed to generate license');
-      }
-      console.log('  License generated');
-
-      // Fill license
-      console.log('  Submitting license...');
-      await licenseTextarea.fill(license);
-      const beforeLicenseUrl = page.url();
-      await logPageState(page, 'before-license-submit');
-
-      await page.locator('button:has-text("Next"), input[type="submit"], #setupLicenseButton').first().click();
-      console.log('  Clicked submit - watching Docker logs for plugin system restart...');
-
-      const restartResult = waitForPluginSystemRestart(90000); // 90s max
-      if (!restartResult.ready) {
-        console.log(`  ✗ Plugin restart failed: ${restartResult.error || 'Unknown error'}`);
-        throw new Error(`Plugin restart failed: ${restartResult.error}`);
-      }
-
-      // After "Plugin System Started", Jira redirects the browser to the next setup page
-      // This should happen within seconds - if not, something is wrong
-      console.log('  Waiting for Jira redirect to complete...');
-      await page.waitForURL((url) => !url.href.includes('SetupLicense'), { timeout: 15000 });
-      console.log(`  Current URL after plugin restart: ${page.url()}`);
-
-      await logPageState(page, 'after-license-submit');
-      console.log('  Form inputs on new page:');
-      await dumpFormInputs(page);
     } else {
-      console.log('  License page not found');
-      await page.screenshot({ path: '/tmp/jira-no-license-page.png' });
-      console.log('  Screenshot saved to /tmp/jira-no-license-page.png');
-      // Show first 500 chars of page for debugging
-      console.log(`  Page excerpt: ${pageContent.substring(0, 500).replace(/\s+/g, ' ')}`);
+      console.log('  License page skipped.');
     }
     console.log('');
 
-    // Step 6: Handle remaining setup pages (wizard state machine)
+    // Step 6: Wizard loop - handle remaining setup pages
     console.log('Step 6: Completing setup wizard...');
 
-    // Loop through wizard pages until we reach dashboard or login
     for (let wizardStep = 0; wizardStep < 10; wizardStep++) {
       await logPageState(page, `wizard-step-${wizardStep}`);
-      console.log(`  [Wizard ${wizardStep}] URL: ${page.url()}`);
 
-      const inputNames = await dumpFormInputs(page);
       const url = page.url().toLowerCase();
-
-      // Detect page type
-      const hasLicenseField = inputNames.some((n) => n.toLowerCase().includes('licensekey'));
-      const hasTitleField = inputNames.some((n) => n.toLowerCase() === 'title');
-      const hasBaseURLField = inputNames.some((n) => n.toLowerCase() === 'baseurl');
-      const hasPasswordField = inputNames.some((n) => n.toLowerCase().includes('password'));
-      const hasUsernameField = inputNames.some((n) => n.toLowerCase().includes('username'));
-      const hasFullnameField = inputNames.some((n) => n.toLowerCase().includes('fullname'));
-
-      // Check if we're done (login page or dashboard)
       if (url.includes('login') || url.includes('dashboard')) {
         console.log('  Reached login/dashboard - wizard complete');
         break;
       }
 
-      // Handle Application Properties page
+      // Check what's actually VISIBLE on the page
+      const isEmailPage = await page.locator('input[name="noemail"]').isVisible();
+      const isPasswordVisible = await page.locator('input[name="password"]').isVisible();
+      const inputNames = await dumpFormInputs(page);
+
+      // --- CASE A: Email Setup ---
+      if (isEmailPage) {
+        console.log('  On Email Configuration page - selecting "Later"...');
+        await page.locator('input[name="noemail"]').first().check();
+        const finishBtn = page.locator('button:has-text("Finish"), input[value="Finish"]');
+        if ((await finishBtn.count()) > 0) {
+          await finishBtn.first().click();
+        }
+        await page.waitForLoadState('networkidle');
+        continue;
+      }
+
+      // --- CASE B: Admin Account Creation ---
+      if (isPasswordVisible) {
+        console.log('  On Admin Account page - creating admin...');
+
+        if (await page.locator('input[name="username"]').isVisible()) {
+          await page.locator('input[name="username"]').first().fill(ADMIN_USER);
+        }
+
+        await page.locator('input[name="password"]').first().fill(ADMIN_PASS);
+
+        if ((await page.locator('input[name="confirm"]').count()) > 0) {
+          await page.locator('input[name="confirm"]').first().fill(ADMIN_PASS);
+        }
+
+        if (await page.locator('input[name="fullname"]').isVisible()) {
+          await page.locator('input[name="fullname"]').first().fill('Administrator');
+        }
+
+        if (await page.locator('input[name="email"]').isVisible()) {
+          await page.locator('input[name="email"]').first().fill('admin@example.com');
+        }
+
+        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+        await page.waitForLoadState('networkidle');
+        console.log('  Admin account created.');
+        continue;
+      }
+
+      // --- CASE C: Application Properties ---
+      const hasTitleField = inputNames.some((n) => n.toLowerCase() === 'title');
+      const hasBaseURLField = inputNames.some((n) => n.toLowerCase() === 'baseurl');
       if (hasTitleField && hasBaseURLField) {
-        console.log('  On Application Properties page - filling and submitting...');
+        console.log('  On Application Properties page...');
         await page.fill('input[name="title"]', 'Jira E2E');
         await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
         await page.waitForLoadState('networkidle');
         continue;
       }
 
-      // Handle License page (if we somehow need to re-submit)
-      if (hasLicenseField && !hasPasswordField) {
-        console.log('  On License page - this should have been handled earlier');
-        // Skip - license was already submitted, just click next if there's a button
-        const nextBtn = page.locator('button:has-text("Next"), input[type="submit"]');
-        if ((await nextBtn.count()) > 0) {
-          await nextBtn.first().click();
-          await page.waitForLoadState('networkidle');
-        }
-        continue;
-      }
-
-      // Handle Admin Account page
-      if (hasPasswordField) {
-        console.log('  On Admin Account page - creating admin...');
-        if (hasUsernameField) {
-          await page.locator('input[name="username"], input#username').first().fill(ADMIN_USER);
-        }
-        await page.locator('input[name="password"], input#password').first().fill(ADMIN_PASS);
-        const confirmField = page.locator('input[name="confirm"], input#confirm');
-        if ((await confirmField.count()) > 0) {
-          await confirmField.first().fill(ADMIN_PASS);
-        }
-        if (hasFullnameField) {
-          await page.locator('input[name="fullname"], input#fullname').first().fill('Administrator');
-        }
-        const emailField = page.locator('input[name="email"], input#email');
-        if ((await emailField.count()) > 0) {
-          await emailField.first().fill('admin@example.com');
-        }
-        await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
-        await page.waitForLoadState('networkidle');
-        console.log('  Admin account created');
-        continue;
-      }
-
-      // No recognized page - try clicking any next/finish button
-      console.log('  Unknown page - looking for next/finish button...');
+      // --- CASE D: Unknown page - try Next/Finish ---
+      console.log('  Unknown page - looking for Next/Finish button...');
       const anyButton = page.locator('button:has-text("Next"), button:has-text("Finish"), input[type="submit"]');
       if ((await anyButton.count()) > 0) {
         await anyButton.first().click();
@@ -510,65 +360,38 @@ async function main() {
     }
     console.log('');
 
-    // Step 7: Finish setup (skip email configuration)
+    // Step 7: Final cleanup
     console.log('Step 7: Finalizing setup...');
     await page.waitForTimeout(2000);
-
-    // Try to click finish/skip email buttons
-    const finishButton = page.locator('button:has-text("Finish"), a:has-text("Finish"), input[value="Finish"]');
-    if ((await finishButton.count()) > 0) {
+    const finishButton = page.locator('button:has-text("Finish"), a:has-text("Finish")');
+    if ((await finishButton.count()) > 0 && (await finishButton.first().isVisible())) {
       await finishButton.first().click();
-      await page.waitForLoadState('networkidle');
     }
 
-    // Check if email config page, click Later/Disable
-    const laterButton = page.locator('a:has-text("Later"), button:has-text("Later"), a:has-text("Disable")');
-    if ((await laterButton.count()) > 0) {
-      await laterButton.first().click();
-      await page.waitForLoadState('networkidle');
-    }
-    console.log('  Setup finalized');
-    console.log('');
-
-    // Step 8: Verify setup by checking for dashboard or login
+    // Step 8: Verify
     console.log('Step 8: Verifying setup...');
-    await page.waitForTimeout(3000);
     await page.goto(`${JIRA_URL}/login.jsp`, { timeout: 30000 });
-
     const loginInput = page.locator('input[name="os_username"], #login-form-username');
+
     if ((await loginInput.count()) > 0) {
-      console.log('  Login page found - setup complete!');
+      console.log('============================================================');
+      console.log(`SUCCESS: Jira setup complete! Login with ${ADMIN_USER} / ${ADMIN_PASS}`);
+      console.log('============================================================');
     } else {
-      const currentTitle = await page.title();
-      console.log(`  Current page: ${currentTitle}`);
+      const title = await page.title();
+      if (title.includes('Dashboard') || title.includes('System')) {
+        console.log(`SUCCESS: Already logged in. Title: ${title}`);
+      } else {
+        throw new Error(`Verification failed. Title: ${title}`);
+      }
     }
-
-    console.log('');
-    console.log('============================================================');
-    console.log(`SUCCESS: Jira setup complete! Login with ${ADMIN_USER} / ${ADMIN_PASS}`);
-    console.log('============================================================');
   } catch (error) {
-    console.log('');
-    console.log('============================================================');
     console.log(`FAILED: ${(error as Error).message}`);
-    console.log('============================================================');
-
-    // Take screenshot for debugging
-    try {
-      await page.screenshot({ path: '/tmp/jira-setup-error.png' });
-      console.log('Screenshot saved to /tmp/jira-setup-error.png');
-    } catch {
-      // Ignore screenshot errors
-    }
-
-    await browser.close();
+    await page.screenshot({ path: '/tmp/jira-setup-error.png' });
     process.exit(1);
   }
 
   await browser.close();
 }
 
-main().catch((err) => {
-  console.error('Unhandled error:', err);
-  process.exit(1);
-});
+main();
