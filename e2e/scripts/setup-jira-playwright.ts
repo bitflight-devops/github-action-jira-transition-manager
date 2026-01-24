@@ -405,17 +405,26 @@ async function main() {
         console.log('  Continuing anyway - page may still work...');
       }
 
-      // Now reload the page to get the admin setup form
+      // Now navigate to get the admin setup form (goto is more reliable than reload after restart)
       console.log('  Reloading page to get admin setup form...');
-      await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForTimeout(2000);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await page.waitForTimeout(2000);
+          break;
+        } catch (navError) {
+          console.log(`  Navigation attempt ${attempt + 1} failed: ${(navError as Error).message.split('\n')[0]}`);
+          if (attempt === 2) throw navError;
+          await page.waitForTimeout(3000);
+        }
+      }
 
       // Verify admin page is ready
       const passwordField = page.locator('input[name="password"], input#password');
       const adminPageReady = (await passwordField.count()) > 0 && (await passwordField.first().isVisible());
       if (!adminPageReady) {
-        console.log('  Admin page not immediately visible, trying one more reload...');
-        await page.reload({ waitUntil: 'networkidle' });
+        console.log('  Admin page not immediately visible, trying one more navigation...');
+        await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForTimeout(3000);
       }
 
