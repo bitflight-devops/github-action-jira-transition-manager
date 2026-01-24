@@ -126,13 +126,16 @@ export class JiraE2EClient {
    * Jira Data Center uses username (name field) for project lead
    * We detect Cloud by presence of accountId field
    */
-  async getCurrentUserInfo(): Promise<{ accountId?: string; name?: string; isCloud: boolean }> {
+  async getCurrentUserInfo(): Promise<{ accountId?: string; name?: string; key?: string; isCloud: boolean }> {
     const user = await this.client.myself.getCurrentUser();
     // Cloud has accountId, Data Center does not
     const isCloud = !!user.accountId;
+    // Log user details for debugging project lead issues
+    console.log(`  User details: name=${user.name}, key=${user.key}, accountId=${user.accountId}`);
     return {
       accountId: user.accountId,
       name: user.name,
+      key: user.key,
       isCloud,
     };
   }
@@ -156,14 +159,15 @@ export class JiraE2EClient {
       console.log(`  Project ${key} does not exist, creating...`);
 
       // Get the current user info to determine Cloud vs Data Center
-      let userInfo: { accountId?: string; name?: string; isCloud: boolean };
+      let userInfo: { accountId?: string; name?: string; key?: string; isCloud: boolean };
       try {
         userInfo = await this.getCurrentUserInfo();
-        const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
+        // For Data Center, prefer 'key' over 'name' as some Jira instances use key for project lead
+        const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.key || userInfo.name;
 
         // Validate we have the required identifier
         if (!identifier) {
-          throw new Error(`Missing required user identifier: ${userInfo.isCloud ? 'accountId' : 'name'}`);
+          throw new Error(`Missing required user identifier: ${userInfo.isCloud ? 'accountId' : 'name/key'}`);
         }
 
         // Log only first/last 4 chars to avoid exposing full identifier
@@ -187,10 +191,11 @@ export class JiraE2EClient {
         projectTemplateKey: PROJECT_TEMPLATES.SOFTWARE_SCRUM,
       };
 
-      // Cloud uses leadAccountId, Data Center uses lead (username)
+      // Cloud uses leadAccountId, Data Center uses lead (key or username)
+      // Prefer 'key' over 'name' for Data Center as some instances use key for project lead
       const projectPayload = userInfo.isCloud
         ? { ...basePayload, leadAccountId: userInfo.accountId! }
-        : { ...basePayload, lead: userInfo.name! };
+        : { ...basePayload, lead: userInfo.key || userInfo.name! };
 
       // Try software project first - it supports fixVersions
       try {
