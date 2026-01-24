@@ -10,10 +10,44 @@ import { E2EConfig } from './e2e-config';
 const MIN_ID_LENGTH_FOR_MASKING = 8;
 const STACK_TRACE_LINES = 3;
 
-// Project template keys for Jira
+/**
+ * Extract detailed error information from Jira API errors
+ * jira.js wraps axios errors and includes response data
+ */
+function extractJiraErrorDetails(error: unknown): string {
+  const err = error as Error & {
+    response?: { data?: { errors?: Record<string, string>; errorMessages?: string[] }; status?: number };
+  };
+
+  const parts: string[] = [err.message || String(error)];
+
+  if (err.response?.status) {
+    parts.push(`Status: ${err.response.status}`);
+  }
+
+  if (err.response?.data?.errors) {
+    const errorDetails = Object.entries(err.response.data.errors)
+      .map(([field, msg]) => `${field}: ${msg}`)
+      .join(', ');
+    if (errorDetails) {
+      parts.push(`Fields: ${errorDetails}`);
+    }
+  }
+
+  if (err.response?.data?.errorMessages?.length) {
+    parts.push(`Messages: ${err.response.data.errorMessages.join(', ')}`);
+  }
+
+  return parts.join(' | ');
+}
+
+// Project template keys for Jira Data Center
+// Reference: https://support.atlassian.com/jira/kb/creating-projects-via-rest-api-in-jira-server-and-data-center/
 const PROJECT_TEMPLATES = {
   SOFTWARE_SCRUM: 'com.pyxis.greenhopper.jira:gh-scrum-template',
-  BUSINESS_CORE: 'com.atlassian.jira-core-project-templates:jira-core-simplified-process-control',
+  SOFTWARE_KANBAN: 'com.pyxis.greenhopper.jira:gh-kanban-template',
+  SOFTWARE_BASIC: 'com.pyxis.greenhopper.jira:basic-software-development-template',
+  BUSINESS_CORE: 'com.atlassian.jira-core-project-templates:jira-core-project-management',
 } as const;
 
 export interface JiraProject {
@@ -87,9 +121,9 @@ export class JiraE2EClient {
 
   /**
    * Get current user information for project lead assignment
-   * 
+   *
    * @returns {Promise<{accountId?: string, name?: string, isCloud: boolean}>} User info with deployment type
-   * 
+   *
    * @remarks
    * Jira Cloud uses accountId for project lead
    * Jira Data Center uses username (name field) for project lead
@@ -129,12 +163,12 @@ export class JiraE2EClient {
       try {
         userInfo = await this.getCurrentUserInfo();
         const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
-        
+
         // Validate we have the required identifier
         if (!identifier) {
           throw new Error(`Missing required user identifier: ${userInfo.isCloud ? 'accountId' : 'name'}`);
         }
-        
+
         // Log only first/last 4 chars to avoid exposing full identifier
         const maskedId =
           identifier.length > MIN_ID_LENGTH_FOR_MASKING
@@ -172,7 +206,7 @@ export class JiraE2EClient {
           projectTypeKey: 'software',
         };
       } catch (softwareError) {
-        const errorMsg = (softwareError as Error).message || String(softwareError);
+        const errorMsg = extractJiraErrorDetails(softwareError);
         console.log(`  Software project creation failed: ${errorMsg}`);
         console.log(`  Trying business project type...`);
 
@@ -199,7 +233,7 @@ export class JiraE2EClient {
             projectTypeKey: 'business',
           };
         } catch (businessError) {
-          const businessErrorMsg = (businessError as Error).message || String(businessError);
+          const businessErrorMsg = extractJiraErrorDetails(businessError);
           console.error(`  Business project creation also failed: ${businessErrorMsg}`);
           throw new Error(
             `Failed to create project ${key}: Software type failed (${errorMsg}), Business type failed (${businessErrorMsg})`,
