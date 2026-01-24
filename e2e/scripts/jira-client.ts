@@ -46,29 +46,16 @@ export class JiraE2EClient {
   constructor(config: E2EConfig) {
     this.config = config;
 
-    // Set up authentication based on type
-    let auth: { basic: { email: string; apiToken: string } } | { basic: { username: string; password: string } };
-
-    if (config.jira.auth.type === 'cloud') {
-      auth = {
-        basic: {
-          email: config.jira.auth.email!,
-          apiToken: config.jira.auth.apiToken!,
-        },
-      };
-    } else {
-      // Data Center uses username/password
-      auth = {
-        basic: {
-          username: config.jira.auth.username!,
-          password: config.jira.auth.password!,
-        },
-      } as unknown as { basic: { email: string; apiToken: string } };
-    }
+    // jira.js uses email/apiToken field names for basic auth
+    // For Data Center, map username->email and password->apiToken
+    const email = config.jira.auth.email || config.jira.auth.username || '';
+    const apiToken = config.jira.auth.apiToken || config.jira.auth.password || '';
 
     this.client = new Version2Client({
       host: config.jira.baseUrl,
-      authentication: auth,
+      authentication: {
+        basic: { email, apiToken },
+      },
     });
   }
 
