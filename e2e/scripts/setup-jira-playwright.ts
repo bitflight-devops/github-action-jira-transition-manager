@@ -446,7 +446,20 @@ async function main() {
 
     // List all form inputs to understand what's on the page
     console.log('  Available form inputs:');
-    const inputNames = await dumpFormInputs(page);
+    let inputNames = await dumpFormInputs(page);
+
+    // Check if we're on Application Properties page (Jira sometimes returns here after license)
+    const hasTitleField = inputNames.some((n) => n.toLowerCase() === 'title');
+    const hasBaseURLField = inputNames.some((n) => n.toLowerCase() === 'baseurl');
+    if (hasTitleField && hasBaseURLField) {
+      console.log('  Still on Application Properties page - submitting to proceed...');
+      await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(2000);
+      // Refresh input list after navigation
+      console.log('  Form inputs after Application Properties submit:');
+      inputNames = await dumpFormInputs(page);
+    }
 
     // Check for admin form fields by looking for password-related inputs
     const hasPasswordField = inputNames.some((n) => n.toLowerCase().includes('password'));
