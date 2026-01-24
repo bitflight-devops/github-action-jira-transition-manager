@@ -223,13 +223,13 @@ async function main() {
     await page.waitForTimeout(2000);
 
     const hasAppProperties = await page
-      .getByText('Set up application properties')
+      .getByText(/set up application properties/i)
       .isVisible()
       .catch(() => false);
     if (hasAppProperties) {
       console.log('  Setting Application Properties...');
       await page.fill('input[name="title"]', 'Jira E2E');
-      await page.click('#next, button:has-text("Next"), input[type="submit"]');
+      await page.locator('#next, button:has-text("Next"), input[type="submit"]').first().click();
       await page.waitForLoadState('networkidle');
     } else {
       console.log('  Application Properties already configured or skipped');
@@ -285,7 +285,7 @@ async function main() {
       // Fill license
       console.log('  Submitting license...');
       await licenseTextarea.fill(license);
-      await page.click('button:has-text("Next"), input[type="submit"], #setupLicenseButton');
+      await page.locator('button:has-text("Next"), input[type="submit"], #setupLicenseButton').first().click();
       await page.waitForLoadState('networkidle');
       console.log('  License submitted');
     } else {
@@ -310,7 +310,7 @@ async function main() {
       await page.fill('input[name="confirm"]', ADMIN_PASS);
       await page.fill('input[name="fullname"]', 'Administrator');
       await page.fill('input[name="email"]', 'admin@example.com');
-      await page.click('button:has-text("Next"), input[type="submit"]');
+      await page.locator('button:has-text("Next"), input[type="submit"]').first().click();
       await page.waitForLoadState('networkidle');
       console.log('  Admin account created');
     } else {
