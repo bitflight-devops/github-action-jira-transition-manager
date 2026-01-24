@@ -120,9 +120,9 @@ export default class Issue {
    * @returns True if the issue should be transitioned, false if it should be skipped
    */
   requiresTransition(): boolean {
-    if (this.status === null) return false;
+    if (this.beforeStatus === null) return false;
     // check for current status vs ignored status
-    return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.status);
+    return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.beforeStatus);
   }
 
   /**
