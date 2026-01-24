@@ -46,6 +46,32 @@ jobs:
       - name: Build action and E2E scripts
         run: yarn build
 
+      - name: Cache Docker images
+        id: cache-docker
+        uses: actions/cache@v5
+        with:
+          path: /tmp/docker-images
+          key: docker-images-${{ hashFiles('e2e/docker/compose.yml') }}
+
+      - name: Load cached Docker images
+        if: steps.cache-docker.outputs.cache-hit == 'true'
+        run: |
+          if [ -f /tmp/docker-images/jira.tar ]; then
+            docker load -i /tmp/docker-images/jira.tar
+          fi
+          if [ -f /tmp/docker-images/mysql.tar ]; then
+            docker load -i /tmp/docker-images/mysql.tar
+          fi
+
+      - name: Pull and cache Docker images
+        if: steps.cache-docker.outputs.cache-hit != 'true'
+        run: |
+          docker pull haxqer/jira:9.17.5
+          docker pull mysql:8.0
+          mkdir -p /tmp/docker-images
+          docker save haxqer/jira:9.17.5 -o /tmp/docker-images/jira.tar
+          docker save mysql:8.0 -o /tmp/docker-images/mysql.tar
+
       - name: Restore E2E snapshots from cache
         if: ${{ github.event.inputs.skip_cache != 'true' }}
         id: cache-snapshots
