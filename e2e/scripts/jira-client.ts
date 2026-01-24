@@ -80,21 +80,24 @@ export class JiraE2EClient {
   }
 
   /**
-   * Get current user's account ID for use in API calls
-   * Returns accountId for Jira Cloud, key for Jira Data Center
+   * Get current user information for project lead assignment
    * 
-   * @returns {Promise<string>} User identifier - accountId (Cloud), key (Data Center), or fallback to name/'admin'
+   * @returns {Promise<{accountId?: string, name?: string, isCloud: boolean}>} User info with deployment type
    * 
    * @remarks
-   * Jira Cloud uses accountId (e.g., "5b10a2844c20165700ede21g")
-   * Jira Data Center uses key (e.g., "JIRAUSER10000")
-   * Falls back to: accountId -> key -> name -> 'admin'
+   * Jira Cloud uses accountId for project lead
+   * Jira Data Center uses username (name field) for project lead
+   * We detect Cloud by presence of accountId field
    */
-  async getCurrentUserAccountId(): Promise<string> {
+  async getCurrentUserInfo(): Promise<{ accountId?: string; name?: string; isCloud: boolean }> {
     const user = await this.client.myself.getCurrentUser();
-    // Jira Cloud uses accountId, Data Center uses key
-    // Both fields should be present, prefer accountId for Cloud, fall back to key for Data Center
-    return user.accountId || user.key || user.name || 'admin';
+    // Cloud has accountId, Data Center does not
+    const isCloud = !!user.accountId;
+    return {
+      accountId: user.accountId,
+      name: user.name,
+      isCloud,
+    };
   }
 
   /**
@@ -115,28 +118,37 @@ export class JiraE2EClient {
       // Project doesn't exist, create it
       console.log(`  Project ${key} does not exist, creating...`);
 
-      // Get the current user's account ID (accountId for Cloud, key for Data Center)
-      let leadAccountId: string;
+      // Get the current user info to determine Cloud vs Data Center
+      let userInfo: { accountId?: string; name?: string; isCloud: boolean };
       try {
-        leadAccountId = await this.getCurrentUserAccountId();
-        // Log only first/last 4 chars to avoid exposing full account ID
-        const maskedId = leadAccountId.length > MIN_ID_LENGTH_FOR_MASKING 
-          ? `${leadAccountId.substring(0, 4)}...${leadAccountId.substring(leadAccountId.length - 4)}`
-          : leadAccountId;
-        console.log(`  Using lead account ID: ${maskedId}`);
+        userInfo = await this.getCurrentUserInfo();
+        const identifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
+        // Log only first/last 4 chars to avoid exposing full identifier
+        const maskedId =
+          identifier && identifier.length > MIN_ID_LENGTH_FOR_MASKING
+            ? `${identifier.substring(0, 4)}...${identifier.substring(identifier.length - 4)}`
+            : identifier || 'unknown';
+        console.log(`  Detected ${userInfo.isCloud ? 'Cloud' : 'Data Center'}, using lead: ${maskedId}`);
       } catch (userError) {
-        console.error(`  Failed to get current user account ID: ${(userError as Error).message}`);
-        throw new Error(`Cannot create project: Unable to determine lead account ID - ${(userError as Error).message}`);
+        console.error(`  Failed to get current user info: ${(userError as Error).message}`);
+        throw new Error(`Cannot create project: Unable to determine user info - ${(userError as Error).message}`);
       }
+
+      // Build the project creation payload based on deployment type
+      const basePayload = {
+        key,
+        name,
+        projectTypeKey: 'software' as const,
+      };
+
+      // Cloud uses leadAccountId, Data Center uses lead (username)
+      const projectPayload = userInfo.isCloud
+        ? { ...basePayload, leadAccountId: userInfo.accountId || 'admin' }
+        : { ...basePayload, lead: userInfo.name || 'admin' };
 
       // Try software project first - it supports fixVersions
       try {
-        const project = await this.client.projects.createProject({
-          key,
-          name,
-          projectTypeKey: 'software',
-          leadAccountId,
-        });
+        const project = await this.client.projects.createProject(projectPayload as any);
         console.log(`  Created software project ${key}`);
         return {
           id: project.id?.toString() || '',
@@ -151,12 +163,11 @@ export class JiraE2EClient {
 
         // Fall back to business type
         try {
-          const project = await this.client.projects.createProject({
-            key,
-            name,
-            projectTypeKey: 'business',
-            leadAccountId,
-          });
+          const businessPayload = userInfo.isCloud
+            ? { ...basePayload, projectTypeKey: 'business' as const, leadAccountId: userInfo.accountId || 'admin' }
+            : { ...basePayload, projectTypeKey: 'business' as const, lead: userInfo.name || 'admin' };
+
+          const project = await this.client.projects.createProject(businessPayload as any);
           console.log(`  Created business project ${key}`);
           return {
             id: project.id?.toString() || '',
