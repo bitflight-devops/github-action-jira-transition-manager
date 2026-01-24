@@ -79,9 +79,9 @@ function waitForJiraStart(timeoutMs: number): boolean {
       }
     }
 
-    // Show progress every 30 seconds
+    // Show progress every 20 seconds
     iteration++;
-    if (iteration % 15 === 0) {
+    if (iteration % 10 === 0) {
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       const logLines = logs.split('\n').filter((l) => l.trim());
       const currentLog = logLines[logLines.length - 1] || '';
@@ -116,9 +116,19 @@ async function main() {
   // Step 1: Wait for Jira to start
   console.log('Step 1: Waiting for Jira to start...');
   console.log(`  Container: ${CONTAINER_NAME}`);
-  console.log('  Timeout: 180s');
+  console.log('  Timeout: 300s (5 minutes)');
 
-  if (!waitForJiraStart(180000)) {
+  // Verify container exists
+  const containerCheck = execQuiet(`docker ps --format '{{.Names}}' | grep -w ${CONTAINER_NAME}`);
+  if (!containerCheck) {
+    console.log(`  ERROR: Container ${CONTAINER_NAME} not found!`);
+    console.log('  Available containers:');
+    console.log(execQuiet('docker ps --format "  - {{.Names}}"'));
+    process.exit(1);
+  }
+  console.log(`  Container ${CONTAINER_NAME} is running`);
+
+  if (!waitForJiraStart(300000)) {
     console.log('  Timed out waiting for Jira to start');
     process.exit(1);
   }
