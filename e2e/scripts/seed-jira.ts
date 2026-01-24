@@ -6,6 +6,9 @@
 import { getE2EConfig } from './e2e-config';
 import { JiraE2EClient } from './jira-client';
 
+// Number of stack trace lines to show in error output
+const STACK_TRACE_LINES = 5;
+
 async function seedJira(): Promise<void> {
   const config = getE2EConfig();
   const client = new JiraE2EClient(config);
@@ -48,7 +51,7 @@ async function seedJira(): Promise<void> {
     console.error('\n❌ Seeding failed!');
     console.error(`   Error: ${(error as Error).message}`);
     if (error instanceof Error && error.stack) {
-      console.error(`   Stack: ${error.stack.split('\n').slice(0, 5).join('\n')}`);
+      console.error(`   Stack: ${error.stack.split('\n').slice(0, STACK_TRACE_LINES).join('\n')}`);
     }
     throw error;
   }

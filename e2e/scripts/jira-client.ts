@@ -78,6 +78,13 @@ export class JiraE2EClient {
   /**
    * Get current user's account ID for use in API calls
    * Returns accountId for Jira Cloud, key for Jira Data Center
+   * 
+   * @returns {Promise<string>} User identifier - accountId (Cloud), key (Data Center), or fallback to name/'admin'
+   * 
+   * @remarks
+   * Jira Cloud uses accountId (e.g., "5b10a2844c20165700ede21g")
+   * Jira Data Center uses key (e.g., "JIRAUSER10000")
+   * Falls back to: accountId -> key -> name -> 'admin'
    */
   async getCurrentUserAccountId(): Promise<string> {
     const user = await this.client.myself.getCurrentUser();
@@ -108,7 +115,11 @@ export class JiraE2EClient {
       let leadAccountId: string;
       try {
         leadAccountId = await this.getCurrentUserAccountId();
-        console.log(`  Using lead account ID: ${leadAccountId}`);
+        // Log only first/last 4 chars to avoid exposing full account ID
+        const maskedId = leadAccountId.length > 8 
+          ? `${leadAccountId.substring(0, 4)}...${leadAccountId.substring(leadAccountId.length - 4)}`
+          : leadAccountId;
+        console.log(`  Using lead account ID: ${maskedId}`);
       } catch (userError) {
         console.error(`  Failed to get current user account ID: ${(userError as Error).message}`);
         throw new Error(`Cannot create project: Unable to determine lead account ID - ${(userError as Error).message}`);
