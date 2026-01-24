@@ -31,6 +31,13 @@ function execQuiet(cmd: string): string {
  * Generate license using atlassian-agent.jar inside the container
  */
 function generateLicense(serverId: string): string | null {
+  // Validate serverId to prevent command injection - must match strict pattern
+  const serverIdPattern = /^[A-Z0-9-]+$/;
+  if (!serverIdPattern.test(serverId)) {
+    console.error(`  Invalid Server ID format: ${serverId}`);
+    return null;
+  }
+
   console.log(`  Generating license for Server ID: ${serverId}...`);
   // Note: This command assumes your container has the agent jar at /var/agent/atlassian-agent.jar
   const cmd = `docker exec ${CONTAINER_NAME} java -jar /var/agent/atlassian-agent.jar -d -p jira -m test@example.com -n "Test" -o "Test Org" -s "${serverId}"`;
@@ -180,12 +187,19 @@ async function main() {
     if (await licenseBox.isVisible()) {
       console.log('  License page found. Extracting Server ID...');
       const content = await page.content();
+      // Extract server ID with strict pattern validation
       const serverIdMatch =
         content.match(/Server ID[:\s]*<[^>]*>([A-Z0-9-]+)/i) ||
         content.match(/([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
 
-      if (serverIdMatch) {
-        const license = generateLicense(serverIdMatch[1]);
+      if (serverIdMatch && serverIdMatch[1]) {
+        const extractedServerId = serverIdMatch[1];
+        // Validate the extracted server ID matches the expected pattern
+        if (!/^[A-Z0-9-]+$/.test(extractedServerId)) {
+          throw new Error(`Invalid Server ID format: ${extractedServerId}`);
+        }
+
+        const license = generateLicense(extractedServerId);
         if (!license) throw new Error('Failed to generate license');
 
         await licenseBox.fill(license);
