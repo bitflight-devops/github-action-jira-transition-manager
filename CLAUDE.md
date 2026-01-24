@@ -51,42 +51,38 @@ const client = new Version2Client({
 ## Commands
 
 ```bash
-# Build (compiles to dist/ via ncc)
+# Build (compiles to dist/index.js via Rollup in ESM format)
 yarn build
 
 # Lint and format (uses Biome)
-yarn lint     # Check linting and formatting
-yarn lint:fix # Auto-fix linting and formatting issues
-yarn format   # Format files only
+yarn lint       # Check linting and formatting
+yarn lint:fix   # Auto-fix linting and formatting issues
+yarn format     # Format files only
+
+# Markdown linting
+yarn lint:markdown      # Check markdown syntax
+yarn lint:markdown:fix  # Auto-fix markdown issues
 
 # Unit tests (Vitest, mocked Jira)
 yarn test
 yarn test:watch
 yarn test -- --testNamePattern="pattern" # Run specific test
 
-# E2E tests (requires Docker)
-yarn e2e:install-playwright # Install Playwright Chromium (required before e2e:setup)
-yarn e2e:up                 # Start Jira + MySQL containers
-yarn e2e:setup              # Run Playwright setup wizard automation
-yarn e2e:wait               # Wait for Jira API ready
-yarn e2e:seed               # Create test project/issues
-yarn e2e:test               # Run E2E test suite
-yarn e2e:down               # Stop containers
-yarn e2e:all                # Full E2E sequence
+# E2E tests (requires Docker and Playwright)
+yarn e2e:up           # Start Jira + MySQL containers
+yarn e2e:setup        # Run Playwright setup wizard automation
+yarn e2e:wait         # Wait for Jira API ready
+yarn e2e:seed         # Create test project/issues
+yarn e2e:test         # Run E2E test suite
+yarn e2e:logs         # Show Docker container logs
+yarn e2e:down         # Stop containers
+yarn e2e:all          # Full E2E sequence (up → setup → wait → seed → test)
+yarn e2e:fast         # Fast E2E (restore from snapshots if valid, else full setup)
 
-# Local E2E development (fast iteration)
-yarn e2e:dev      # Start Jira from snapshots (fast mode)
-yarn e2e:dev:stop # Stop Jira containers
-yarn e2e:dev:test # Run E2E tests against running Jira
-yarn e2e:validate # Pre-push validation (lint + unit tests + e2e)
-
-# CI pipeline monitoring (uses gh CLI)
-yarn ci:status   # Show recent runs for current branch
-yarn ci:watch    # Watch latest run in progress
-yarn ci:failed   # Show logs from last failed run
-yarn ci:pr       # Check PR workflow status
-yarn ci:pr:watch # Watch PR checks until complete
-yarn ci:rerun    # Rerun failed jobs
+# E2E snapshots (Docker volume caching for faster CI)
+yarn e2e:snapshot:check   # Check if snapshots are valid
+yarn e2e:snapshot:restore # Restore from cached snapshots
+yarn e2e:snapshot:save    # Save current Docker volumes as snapshots
 ```
 
 ## Testing
@@ -111,10 +107,12 @@ Located in `e2e/`. Uses a Dockerized Jira Data Center instance (`haxqer/jira:9.1
 - Fast path: Restore from cached Docker volume snapshots
 - Slow path: Full Jira setup from scratch
 
-## TypeScript Configuration
+## Build and TypeScript Configuration
 
-- `tsconfig.json` - Main action code
-- `e2e/tsconfig.json` - E2E scripts (separate compilation to `e2e/dist/`)
+- **Build System**: Rollup with TypeScript plugin (see `rollup.config.ts`)
+- **Output Format**: ESM (`dist/index.js`)
+- **tsconfig.json**: Main action code configured for ESM (`module: ESNext`, `moduleResolution: Bundler`)
+- **e2e/tsconfig.json**: E2E scripts (separate TypeScript compilation to `e2e/dist/`)
 
 ## CI/CD Pipeline Monitoring
 
