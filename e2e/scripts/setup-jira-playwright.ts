@@ -409,23 +409,11 @@ async function main() {
         console.log('  Continuing anyway - page may still work...');
       }
 
-      // Now navigate to get the admin setup form
-      console.log('  Navigating to admin setup form...');
-      try {
-        await page.goto(JIRA_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      } catch (navError) {
-        const errorMsg = (navError as Error).message;
-        // "interrupted by another navigation" means Jira redirected us - that's fine
-        if (errorMsg.includes('interrupted by another navigation')) {
-          console.log('  Jira redirected us (expected behavior)');
-        } else {
-          console.log(`  Navigation warning: ${errorMsg.split('\n')[0]}`);
-        }
-      }
-
-      // Wait for page to settle
-      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-      console.log(`  Current URL: ${page.url()}`);
+      // After plugin restart, Jira automatically redirects the browser to the next setup page
+      // DON'T navigate - just wait for the redirect to complete
+      console.log('  Waiting for Jira redirect to complete...');
+      await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {});
+      console.log(`  Current URL after plugin restart: ${page.url()}`);
 
       await logPageState(page, 'after-license-submit');
       console.log('  Form inputs on new page:');
