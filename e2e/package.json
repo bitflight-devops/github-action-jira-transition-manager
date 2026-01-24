@@ -1,0 +1,5 @@
+{
+  "type": "commonjs",
+  "private": true,
+  "description": "E2E test scripts compiled to CommonJS"
+}
