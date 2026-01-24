@@ -52,58 +52,80 @@ function generateLicense(serverId: string): string {
 }
 
 /**
- * Watch Docker logs for patterns indicating Jira is ready
+ * Watch Docker logs for Jira startup - fail fast on errors
  */
-function waitForJiraStart(timeoutMs: number): boolean {
+function waitForJiraStart(timeoutMs: number): { ready: boolean; error?: string } {
   const startTime = Date.now();
-  // Multiple patterns that indicate Jira is starting/ready
+
+  // Success patterns
   const readyPatterns = [
     /Jira is ready to serve/i,
     /You can now access JIRA/i,
-    /Server startup in/i,
-    /Catalina.*start/i,
-    /JiraStartupLogger.*JIRA.*started/i,
+    /Server startup in \d+/i,
+    /JiraStartupLogger.*started/i,
   ];
 
-  let lastLogLine = '';
-  let iteration = 0;
+  // Error patterns - fail fast when detected
+  const errorPatterns = [
+    { pattern: /FATAL|ERROR.*Exception/i, msg: 'Fatal error in Jira startup' },
+    { pattern: /Cannot connect to database/i, msg: 'Database connection failed' },
+    { pattern: /Unable to start Jira/i, msg: 'Jira startup failed' },
+    { pattern: /OutOfMemoryError/i, msg: 'Out of memory' },
+    { pattern: /Address already in use/i, msg: 'Port conflict' },
+    { pattern: /Shutting down/i, msg: 'Jira is shutting down' },
+  ];
+
+  let lastLogHash = '';
+  let logLineCount = 0;
 
   while (Date.now() - startTime < timeoutMs) {
-    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -50`);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -30`);
+    const logHash = logs.slice(-200); // Simple change detection
 
-    // Check all patterns
-    for (const pattern of readyPatterns) {
-      if (pattern.test(logs)) {
-        console.log(`  Found startup indicator: ${pattern.source}`);
-        return true;
+    // Only process if logs changed
+    if (logHash !== lastLogHash) {
+      lastLogHash = logHash;
+
+      // Check for success
+      for (const pattern of readyPatterns) {
+        if (pattern.test(logs)) {
+          console.log(`  [${elapsed}s] ✓ ${pattern.source}`);
+          return { ready: true };
+        }
+      }
+
+      // Check for errors - fail fast
+      for (const { pattern, msg } of errorPatterns) {
+        if (pattern.test(logs)) {
+          console.log(`  [${elapsed}s] ✗ ${msg}`);
+          console.log('');
+          console.log('  === Docker logs (error detected) ===');
+          console.log(logs);
+          console.log('  =====================================');
+          return { ready: false, error: msg };
+        }
+      }
+
+      // Show latest log line
+      const lines = logs.split('\n').filter((l) => l.trim());
+      const latest = lines[lines.length - 1] || '';
+      if (latest && logLineCount++ % 3 === 0) {
+        // Show every 3rd unique log
+        console.log(`  [${elapsed}s] ${latest.substring(0, 120)}`);
       }
     }
 
-    // Show progress every 20 seconds
-    iteration++;
-    if (iteration % 10 === 0) {
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      const logLines = logs.split('\n').filter((l) => l.trim());
-      const currentLog = logLines[logLines.length - 1] || '';
-      if (currentLog !== lastLogLine) {
-        console.log(`  [${elapsed}s] ${currentLog.substring(0, 100)}`);
-        lastLogLine = currentLog;
-      } else {
-        console.log(`  [${elapsed}s] Waiting...`);
-      }
-    }
-
-    execSync('sleep 2');
+    execSync('sleep 1'); // Check every 1 second for faster response
   }
 
-  // On timeout, print recent logs
+  // Timeout
   console.log('');
-  console.log('  === Recent Docker logs ===');
-  const recentLogs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -30`);
-  console.log(recentLogs);
-  console.log('  ===========================');
+  console.log('  === Docker logs (timeout) ===');
+  console.log(execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -30`));
+  console.log('  ==============================');
 
-  return false;
+  return { ready: false, error: 'Timeout waiting for Jira startup' };
 }
 
 async function main() {
@@ -128,8 +150,9 @@ async function main() {
   }
   console.log(`  Container ${CONTAINER_NAME} is running`);
 
-  if (!waitForJiraStart(300000)) {
-    console.log('  Timed out waiting for Jira to start');
+  const startResult = waitForJiraStart(120000); // 2 min max, should be ~15s
+  if (!startResult.ready) {
+    console.log(`  ✗ ${startResult.error || 'Failed to start'}`);
     process.exit(1);
   }
   console.log('✓ Jira startup detected');
