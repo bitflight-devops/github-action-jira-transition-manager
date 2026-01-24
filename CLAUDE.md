@@ -1,192 +1,106 @@
-# Claude Development Notes
+# CLAUDE.md
 
-This file documents the testing infrastructure and development setup for this GitHub Action.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Testing Setup
+## What This Action Does
+
+A GitHub Action that transitions Jira issues between workflow states based on GitHub events. Given a list of issue keys (e.g., `PROJ-123,PROJ-456`), it reads a YAML configuration mapping GitHub events to Jira states and applies the appropriate transitions.
+
+Configuration lives in `.github/github_event_jira_transitions.yml`:
+
+```yaml
+projects:
+  PROJ:
+    ignored_states:
+      - Done
+    to_state:
+      'In Progress':
+        - pull_request:
+            action: opened
+      'In Review':
+        - pull_request:
+            action: ready_for_review
+```
+
+## Architecture
+
+### Core Classes (src/)
+
+- **`Jira`** - Wrapper around `jira.js` Version2Client. All Jira API calls go through here.
+- **`Issue`** - Represents a single Jira issue. Handles fetching issue data, determining available transitions, and applying transitions.
+- **`TransitionEventManager`** - Loads YAML config and matches GitHub event context to target Jira states.
+- **`Action`** - Entry point. Parses issue list, creates Issue objects, executes transitions in parallel.
+
+### Key Dependency: jira.js
+
+This project uses `jira.js` v5 for all Jira API interactions. When adding Jira functionality, use the existing `Version2Client` patterns in `src/Jira.ts` rather than raw HTTP calls. The library provides typed methods for issues, transitions, projects, versions, screens, etc.
+
+```typescript
+import { Version2Client } from 'jira.js';
+
+const client = new Version2Client({
+  host: 'https://company.atlassian.net',
+  authentication: { basic: { email, apiToken } },
+});
+
+// Use client.issues, client.projects, client.projectVersions, etc.
+```
+
+## Commands
+
+```bash
+# Build (compiles to dist/ via ncc)
+yarn build
+
+# Lint and format
+yarn lint
+yarn format
+
+# Unit tests (Vitest, mocked Jira)
+yarn test
+yarn test:watch
+yarn test -- --testNamePattern="pattern" # Run specific test
+
+# E2E tests (requires Docker)
+yarn e2e:up    # Start Jira + MySQL containers
+yarn e2e:setup # Run Playwright setup wizard automation
+yarn e2e:wait  # Wait for Jira API ready
+yarn e2e:seed  # Create test project/issues
+yarn e2e:test  # Run E2E test suite
+yarn e2e:down  # Stop containers
+yarn e2e:all   # Full E2E sequence
+```
+
+## Testing
 
 ### Unit Tests
 
-**Status: Working**
-
-Unit tests use **Vitest** (migrated from Jest) with mocked Jira API responses.
-
-- Config: `vitest.config.ts`
-- Tests: `__tests__/index.test.ts`
-- Fixtures: `__tests__/fixtures/jira-fixtures.ts`
-
-Run with:
-
-```bash
-yarn test
-```
-
-The Jira client is mocked using `vi.mock('../src/Jira')` to avoid real API calls. Mock data is defined inline in the test file due to Vitest's hoisting behavior.
+Located in `__tests__/`. Uses Vitest with mocked Jira client via `vi.mock('../src/Jira')`. Mock data is inline in test files due to Vitest hoisting.
 
 ### E2E Tests
 
-**Status: In progress - testing Playwright browser automation**
+Located in `e2e/`. Uses a Dockerized Jira Data Center instance (`haxqer/jira:9.17.5`).
 
-E2E tests use a Dockerized Jira Data Center instance via the `haxqer/jira` image.
+**E2E Scripts** (`e2e/scripts/`):
 
-#### Docker Setup
+- `setup-jira-playwright.ts` - Automates Jira setup wizard via headless Chromium (handles XSRF)
+- `jira-client.ts` - E2E test client using jira.js (same library as main action)
+- `seed-jira.ts` - Creates test project, versions, and issues
+- `wait-for-jira.ts` - Polls until Jira API is ready
 
-- Config: `e2e/docker/compose.yml`
-- Image: `haxqer/jira:9.17.5` with MySQL 8.0
-- Database config: `e2e/docker/jira-dbconfig.xml` (pre-mounted)
-- The haxqer image includes `atlassian-agent.jar` for license generation
+**CI Workflow** (`.github/workflows/e2e-jira.yml`):
 
-#### How It Works
+- Fast path: Restore from cached Docker volume snapshots
+- Slow path: Full Jira setup from scratch
 
-1. **Database config is pre-mounted** via Docker Compose volume mount
-   - `jira-dbconfig.xml` → `/var/jira/dbconfig.xml`
-   - Jira reads this on startup and connects to MySQL automatically
-   - No need to submit web forms for database setup
+## TypeScript Configuration
 
-2. **Playwright browser automation** (`setup-jira-playwright.ts`):
-   - Waits for Jira startup (monitors Docker logs for ready indicators)
-   - Launches headless Chromium browser
-   - Navigates through setup wizard (license, admin account)
-   - Handles XSRF automatically (real browser session)
+- `tsconfig.json` - Main action code
+- `e2e/tsconfig.json` - E2E scripts (separate compilation to `e2e/dist/`)
+- `tsconfig.eslint.json` - ESLint type checking
 
-#### E2E Scripts
+## Notes
 
-Located in `e2e/scripts/`:
-
-| Script                     | Purpose                                      |
-| -------------------------- | -------------------------------------------- |
-| `setup-jira-playwright.ts` | Browser-based setup (primary, handles XSRF)  |
-| `setup-jira.ts`            | HTTP-based setup (fallback, has XSRF issues) |
-| `wait-for-jira.ts`         | Waits for Jira API to be ready               |
-| `seed-jira.ts`             | Creates test project and issues              |
-| `snapshot-*.ts`            | Save/restore Docker volumes for faster CI    |
-
-#### CI Workflow
-
-File: `.github/workflows/e2e-jira.yml`
-
-The workflow has two paths:
-
-1. **Fast path**: Restore from cached Docker volume snapshots
-2. **Slow path**: Full Jira setup from scratch (uses Playwright)
-
-## What Has Been Tried (E2E Setup)
-
-### Approach 1: HTTP Form Automation (Failed)
-
-Tried to automate the Jira setup wizard via HTTP form submissions:
-
-- **Problem**: 403 Forbidden errors due to CSRF token/session issues
-- **Cause**: `X-Atlassian-Token: no-check` only works for REST APIs, not web forms
-- **Attempted fixes**: Extract CSRF tokens, pass cookies manually, non-browser User-Agent
-- **Result**: Still got 403 errors - web forms have strict XSRF protection
-
-### Approach 2: Database License Insertion (Partial Success)
-
-Bypassed web forms by inserting license directly into MySQL:
-
-1. Mount `dbconfig.xml` directly into container via Docker Compose
-2. Insert license into `productlicense` table
-3. Restart Jira to pick up the license
-
-- **Result**: License insertion worked, but still needed browser for admin setup
-
-### Current Approach: Playwright Browser Automation (In Testing)
-
-Uses headless Chromium to automate the setup wizard:
-
-1. Mount `dbconfig.xml` for database config (skips DB wizard step)
-2. Wait for Jira startup (monitor Docker logs for ready patterns)
-3. Launch Playwright with headless Chromium
-4. Navigate through setup wizard pages (license, admin account)
-5. XSRF handled automatically by real browser session
-
-#### Why Playwright?
-
-- Real browser handles cookies, sessions, and XSRF tokens automatically
-- More reliable than HTTP-based form submission
-- Can take screenshots on failure for debugging
-- Works with Jira's strict XSRF protection
-
-## Configuration Files
-
-### ESLint
-
-- Config: `eslint.config.mjs`
-- Uses flat config format (ESLint 9+)
-- Vitest globals defined manually (no `eslint-plugin-vitest`)
-
-### TypeScript
-
-- Main: `tsconfig.json`
-- E2E: `e2e/tsconfig.json`
-- ESLint: `tsconfig.eslint.json`
-
-### Removed Dependencies
-
-- Jest (replaced by Vitest)
-- Babel (Vitest uses esbuild natively)
-- `eslint-plugin-jest`
-
-## Useful Commands
-
-```bash
-# Unit tests
-yarn test
-yarn test:watch
-
-# E2E (local)
-yarn e2e:up         # Start containers
-yarn e2e:setup      # Run Playwright setup (primary)
-yarn e2e:setup:http # Run HTTP-based setup (fallback)
-yarn e2e:wait       # Wait for Jira API
-yarn e2e:seed       # Create test data
-yarn e2e:test       # Run E2E tests
-yarn e2e:down       # Stop containers
-yarn e2e:logs       # View Docker logs
-
-# Build
-yarn build     # Build action + E2E scripts
-yarn build:e2e # Build only E2E scripts
-```
-
-## Development Guidelines
-
-### When Fixing Bugs - Reflect and Generalize
-
-When you find and fix a bug, STOP and ask:
-
-1. **What category of issue is this?**
-   - Case sensitivity? → Where else do I compare strings/text?
-   - Selector ambiguity? → Where else do I select elements that might not be unique?
-   - Strict mode violation? → Where else do I use methods that expect single elements?
-   - Missing error handling? → Where else might operations fail silently?
-
-2. **What other code could have the same category of issue?**
-   - Not just the same function/pattern, but the same _type_ of problem
-   - Review the entire file, not just the failing line
-
-3. **Search broadly, then narrow down**
-   - Start with the general category, find all candidates
-   - Evaluate each one for the specific issue
-
-### Example: How We Should Have Caught the Playwright Issues
-
-| Bug Found                          | Category           | Should Have Asked                                                      | Would Have Found                                          |
-| ---------------------------------- | ------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------- |
-| `getByText('Setup')` failed        | Case sensitivity   | "Where else do I match text that could vary in case?"                  | All `getByText`, `has-text`, title checks                 |
-| `page.click('a, b')` failed        | Strict mode        | "Where else do I target elements that might match multiple?"           | All `click()`, `fill()`, `locator()` with comma selectors |
-| `textarea#id` matched hidden input | Selector ambiguity | "Where else might my selector match both visible and hidden elements?" | All `#id` selectors on form pages                         |
-
-### Playwright Quick Reference
-
-| Issue          | Pattern to Avoid     | Use Instead                               |
-| -------------- | -------------------- | ----------------------------------------- |
-| Multi-element  | `page.click('a, b')` | `page.locator('a, b').first().click()`    |
-| Case-sensitive | `getByText('Setup')` | `getByText(/setup/i)`                     |
-| Ambiguous ID   | `locator('#id')`     | `locator('textarea#id')` or more specific |
-| Uncaught error | `.isVisible()`       | `.isVisible().catch(() => false)`         |
-
-## Links
-
-- haxqer/jira image: https://github.com/haxqer/jira
-- Jira setup wizard docs: https://confluence.atlassian.com/adminjiraserver/running-the-setup-wizard-938846872.html
+- The action requires Node 22+
+- Pre-commit hooks run lint-staged, build, and doc generation
+- Commits use conventional commit format (commitlint enforced)
