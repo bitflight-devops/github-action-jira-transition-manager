@@ -1,4 +1,5 @@
 name: Jira Transition Manager
+author: bitflight-devops
 description: This action will transition the list of Jira issues provided between states, or it will display the available transitions and the current issue state.
 branding:
   icon: 'chevron-right'

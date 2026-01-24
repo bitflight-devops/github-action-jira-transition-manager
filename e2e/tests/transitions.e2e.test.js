@@ -1,4 +1,3 @@
-'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
 const action_1 = require('../../src/action');
 const e2e_config_1 = require('../scripts/e2e-config');

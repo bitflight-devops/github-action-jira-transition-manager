@@ -1,10 +1,10 @@
 import * as core from '@actions/core';
-import { Context } from '@actions/github/lib/context';
-import { Version2Models } from 'jira.js';
+import type { Context } from '@actions/github/lib/context';
+import type { Version2Models } from 'jira.js';
 import _ from 'lodash';
 
-import { Args } from './@types';
-import Jira from './Jira';
+import type { Args } from './@types';
+import type Jira from './Jira';
 import TransitionEventManager from './TransitionEventManager';
 
 export interface IssueOutput {

@@ -3,7 +3,7 @@
  *
  * This approach handles XSRF automatically since it uses a real browser.
  */
-import { execSync } from 'child_process';
+import { execSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
 // =============================================================================
@@ -22,7 +22,7 @@ const SCREENSHOT_DIR = '/tmp/jira-setup';
 function execQuiet(cmd: string): string {
   try {
     return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-  } catch (e) {
+  } catch (_e) {
     return '';
   }
 }
@@ -155,7 +155,7 @@ async function main() {
           console.log(`  ✓ UI Ready. Title: ${await page.title()}`);
           break;
         }
-      } catch (e) {
+      } catch (_e) {
         /* ignore connection refused */
       }
 
@@ -192,7 +192,7 @@ async function main() {
         content.match(/Server ID[:\s]*<[^>]*>([A-Z0-9-]+)/i) ||
         content.match(/([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/);
 
-      if (serverIdMatch && serverIdMatch[1]) {
+      if (serverIdMatch?.[1]) {
         const extractedServerId = serverIdMatch[1];
         // Validate the extracted server ID matches the expected pattern
         if (!/^[A-Z0-9-]+$/.test(extractedServerId)) {
@@ -334,7 +334,7 @@ async function main() {
     try {
       await page.screenshot({ path: `${SCREENSHOT_DIR}/error_final.png` });
       console.log(`Screenshot saved to ${SCREENSHOT_DIR}/error_final.png`);
-    } catch (e) {
+    } catch (_e) {
       /* ignore screenshot errors */
     }
     process.exit(1);

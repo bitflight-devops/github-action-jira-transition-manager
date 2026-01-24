@@ -12,9 +12,9 @@
  *   - Docker must be running
  *   - Jira containers should be stopped (data volumes must exist)
  */
-import { execSync, spawnSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execSync, spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 interface SnapshotConfig {
   outputDir: string;
@@ -69,7 +69,7 @@ function stopContainers(): void {
       stdio: 'inherit',
     });
     console.log('Containers stopped');
-  } catch (error) {
+  } catch (_error) {
     console.log('Note: Could not stop containers (may not be running)');
   }
 }

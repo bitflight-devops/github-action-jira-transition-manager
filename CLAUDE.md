@@ -46,15 +46,18 @@ const client = new Version2Client({
 // Use client.issues, client.projects, client.projectVersions, etc.
 ```
 
+**Data Center Limitation**: jira.js is designed for Jira Cloud. For project creation on Data Center, it only maps `leadAccountId` (Cloud account ID), not `lead` (username string). The E2E client (`e2e/scripts/jira-client.ts`) works around this by using raw HTTP requests for Data Center project creation. See `createProjectDirect()` method.
+
 ## Commands
 
 ```bash
 # Build (compiles to dist/ via ncc)
 yarn build
 
-# Lint and format
-yarn lint
-yarn format
+# Lint and format (uses Biome)
+yarn lint     # Check linting and formatting
+yarn lint:fix # Auto-fix linting and formatting issues
+yarn format   # Format files only
 
 # Unit tests (Vitest, mocked Jira)
 yarn test
@@ -62,13 +65,28 @@ yarn test:watch
 yarn test -- --testNamePattern="pattern" # Run specific test
 
 # E2E tests (requires Docker)
-yarn e2e:up    # Start Jira + MySQL containers
-yarn e2e:setup # Run Playwright setup wizard automation
-yarn e2e:wait  # Wait for Jira API ready
-yarn e2e:seed  # Create test project/issues
-yarn e2e:test  # Run E2E test suite
-yarn e2e:down  # Stop containers
-yarn e2e:all   # Full E2E sequence
+yarn e2e:install-playwright # Install Playwright Chromium (required before e2e:setup)
+yarn e2e:up                 # Start Jira + MySQL containers
+yarn e2e:setup              # Run Playwright setup wizard automation
+yarn e2e:wait               # Wait for Jira API ready
+yarn e2e:seed               # Create test project/issues
+yarn e2e:test               # Run E2E test suite
+yarn e2e:down               # Stop containers
+yarn e2e:all                # Full E2E sequence
+
+# Local E2E development (fast iteration)
+yarn e2e:dev      # Start Jira from snapshots (fast mode)
+yarn e2e:dev:stop # Stop Jira containers
+yarn e2e:dev:test # Run E2E tests against running Jira
+yarn e2e:validate # Pre-push validation (lint + unit tests + e2e)
+
+# CI pipeline monitoring (uses gh CLI)
+yarn ci:status   # Show recent runs for current branch
+yarn ci:watch    # Watch latest run in progress
+yarn ci:failed   # Show logs from last failed run
+yarn ci:pr       # Check PR workflow status
+yarn ci:pr:watch # Watch PR checks until complete
+yarn ci:rerun    # Rerun failed jobs
 ```
 
 ## Testing
@@ -97,7 +115,12 @@ Located in `e2e/`. Uses a Dockerized Jira Data Center instance (`haxqer/jira:9.1
 
 - `tsconfig.json` - Main action code
 - `e2e/tsconfig.json` - E2E scripts (separate compilation to `e2e/dist/`)
-- `tsconfig.eslint.json` - ESLint type checking
+
+## CI/CD Pipeline Monitoring
+
+For monitoring GitHub Actions workflows, tracing errors, and collecting logs using the `gh` CLI, see:
+
+@.claude/docs/gh-pipeline-monitoring.md
 
 ## Notes
 

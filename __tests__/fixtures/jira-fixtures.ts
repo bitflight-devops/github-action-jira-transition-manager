@@ -3,7 +3,7 @@
  * Based on jira.js library types for accurate mocking
  */
 
-import type { Issue, Transitions, Version, Project, StatusCategory, IssueTransition } from 'jira.js/version2';
+import type { Issue, IssueTransition, Project, StatusCategory, Transitions, Version } from 'jira.js/version2';
 
 // Status Categories
 export const statusCategories: Record<string, StatusCategory> = {

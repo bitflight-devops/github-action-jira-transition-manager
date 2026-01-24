@@ -16,10 +16,10 @@
  *   - Docker must be running
  *   - Containers should be stopped
  */
-import { execSync, spawnSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as readline from 'readline';
+import { execSync, spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as readline from 'node:readline';
 
 interface SnapshotMetadata {
   createdAt: string;
