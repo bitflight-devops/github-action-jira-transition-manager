@@ -210,7 +210,7 @@ export class JiraE2EClient {
         name: project.name || name,
         projectTypeKey: project.projectTypeKey || 'software',
       };
-    } catch (_getError) {
+    } catch {
       // Project doesn't exist, create it
       console.log(`  Project ${key} does not exist, creating...`);
 
@@ -229,7 +229,7 @@ export class JiraE2EClient {
         // Log only first/last 4 chars to avoid exposing full identifier
         const maskedId =
           identifier.length > MIN_ID_LENGTH_FOR_MASKING
-            ? `${identifier.substring(0, 4)}...${identifier.substring(identifier.length - 4)}`
+            ? `${identifier.slice(0, 4)}...${identifier.slice(-4)}`
             : identifier;
         console.log(`  Detected ${userInfo.isCloud ? 'Cloud' : 'Data Center'}, using lead: ${maskedId}`);
       } catch (userError) {
@@ -248,11 +248,13 @@ export class JiraE2EClient {
       };
 
       // Try software project first - it supports fixVersions
+      // Lead identifier is already validated above
+      const leadIdentifier = userInfo.isCloud ? userInfo.accountId : userInfo.name;
       try {
         const project = await this.createProjectWithLead(
           { ...basePayload },
           userInfo.isCloud,
-          userInfo.isCloud ? userInfo.accountId! : userInfo.name!,
+          leadIdentifier as string,
         );
         console.log(`  Created software project ${key}`);
         return {
@@ -275,11 +277,7 @@ export class JiraE2EClient {
             projectTemplateKey: PROJECT_TEMPLATES.BUSINESS_CORE,
           };
 
-          const project = await this.createProjectWithLead(
-            businessPayload,
-            userInfo.isCloud,
-            userInfo.isCloud ? userInfo.accountId! : userInfo.name!,
-          );
+          const project = await this.createProjectWithLead(businessPayload, userInfo.isCloud, leadIdentifier as string);
           console.log(`  Created business project ${key}`);
           return {
             id: project.id?.toString() || '',
