@@ -78,9 +78,6 @@ async function waitForNavigation(page: Page, fromUrl: string, timeout = 30000): 
 function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?: string } {
   const startTime = Date.now();
 
-  // Get current log line count so we only look at NEW lines
-  const baselineCount = parseInt(execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | wc -l`), 10) || 0;
-
   // Patterns to track progress
   const startingPattern = /Starting the JIRA Plugin System/i;
   const readyPattern = /Plugin System Started/i;
@@ -96,8 +93,8 @@ function waitForPluginSystemRestart(timeoutMs: number): { ready: boolean; error?
 
   while (Date.now() - startTime < timeoutMs) {
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    // Only look at lines AFTER our baseline (new logs since we started waiting)
-    const logs = execQuiet(`docker logs ${CONTAINER_NAME} 2>&1 | tail -n +${baselineCount + 1}`);
+    // Only look at logs from the last 5 seconds to avoid matching old messages
+    const logs = execQuiet(`docker logs --since 5s ${CONTAINER_NAME} 2>&1`);
 
     // Check for errors first
     for (const { pattern, msg } of errorPatterns) {
@@ -395,7 +392,7 @@ async function main() {
       console.log('  Clicked submit, waiting for navigation...');
 
       // Wait for URL to change (indicates page transition)
-      await waitForNavigation(page, beforeLicenseUrl, 60000);
+      await waitForNavigation(page, beforeLicenseUrl, 15000);
       await page.waitForLoadState('networkidle');
 
       // IMPORTANT: Jira restarts its plugin system after license submission
@@ -426,7 +423,7 @@ async function main() {
       console.log('  Waiting for admin setup form to appear...');
       const passwordField = page.locator('input[name="password"], input#password');
       try {
-        await passwordField.first().waitFor({ state: 'visible', timeout: 60000 });
+        await passwordField.first().waitFor({ state: 'visible', timeout: 15000 });
         console.log('  Admin setup form ready');
       } catch {
         console.log('  Admin form not visible after 60s, continuing anyway...');
