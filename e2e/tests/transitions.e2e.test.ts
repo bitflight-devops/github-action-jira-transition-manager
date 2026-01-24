@@ -103,9 +103,11 @@ describe('Jira Transition E2E Tests', () => {
 
         const action = new Action(mockContext, args);
 
-        // This should not throw since failOnError is false
+        // When failOnError is false, execute() should not throw even for non-existent issues.
+        // It logs the error internally and returns false (no successful transitions).
+        // The "Failures: 1" output in logs is expected behavior, not a test failure.
         const result = await action.execute();
-        expect(typeof result).toBe('boolean');
+        expect(result).toBe(false);
       },
       config.timeouts.testTimeout,
     );
