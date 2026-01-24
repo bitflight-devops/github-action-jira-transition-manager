@@ -189,7 +189,7 @@ export class JiraE2EClient {
 
   /**
    * Create an issue
-   * Note: fixVersions may not be available on all project types/screens
+   * If fixVersions isn't on create screen, creates issue then updates it
    */
   async createIssue(
     projectKey: string,
@@ -203,7 +203,7 @@ export class JiraE2EClient {
       issuetype: { name: issueType },
     };
 
-    // Try with fixVersions first, fall back to without if field isn't on screen
+    // Try with fixVersions on create
     if (fixVersions && fixVersions.length > 0) {
       fields.fixVersions = fixVersions.map((name) => ({ name }));
       try {
@@ -213,13 +213,20 @@ export class JiraE2EClient {
         });
         return this.getIssue(response.key);
       } catch (error) {
-        // If fixVersions field isn't available, retry without it
+        // If fixVersions not on create screen, create then update
         if (error instanceof Error && error.message.includes('fixVersions')) {
-          console.log('  Note: fixVersions not available on screen, creating without it');
           delete fields.fixVersions;
-        } else {
-          throw error;
+          const response = await this.request<{ key: string; id: string }>('/rest/api/2/issue', {
+            method: 'POST',
+            body: JSON.stringify({ fields }),
+          });
+          // Update with fixVersions (REST API update bypasses screen restrictions)
+          await this.updateIssue(response.key, {
+            fixVersions: fixVersions.map((name) => ({ name })),
+          });
+          return this.getIssue(response.key);
         }
+        throw error;
       }
     }
 
