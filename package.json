@@ -129,7 +129,7 @@
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
     "dotenv": "^17.2.3",
-    "github-action-readme-generator": "1.8.9",
+    "github-action-readme-generator": "1.8.10",
     "husky": "^9.1.7",
     "js-yaml": "^4.1.1",
     "lint-staged": "^16.2.7",
