@@ -10,11 +10,7 @@ export default defineConfig({
     hookTimeout: 60000,
     clearMocks: true,
     // Run e2e tests sequentially
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    maxWorkers: 1,
+    isolate: false,
   },
 });
