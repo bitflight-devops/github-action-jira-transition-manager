@@ -125,7 +125,7 @@
     "@types/lodash": "^4.17.23",
     "@types/nconf": "^0.10.7",
     "@types/node": "^25.0.9",
-    "@types/sinon": "^17.0.3",
+    "@types/sinon": "^21.0.0",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
     "dotenv": "^17.2.3",
@@ -138,7 +138,7 @@
     "rimraf": "^6.1.2",
     "rollup": "^4.56.0",
     "semantic-release": "^25.0.2",
-    "sinon": "^19.0.2",
+    "sinon": "^21.0.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
