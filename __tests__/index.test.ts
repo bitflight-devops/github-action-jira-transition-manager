@@ -97,16 +97,19 @@ const mockTransitions = {
 
 // Mock the Jira class to avoid HTTP requests entirely
 vi.mock('../src/Jira', () => {
+  // Use a proper class constructor for vitest v4
+  class MockJira {
+    getIssue = vi.fn().mockImplementation((issueId: string) => {
+      if (issueId === 'DVPS-336') return Promise.resolve(mockIssue336);
+      if (issueId === 'DVPS-339') return Promise.resolve(mockIssue339);
+      return Promise.reject(new Error(`Issue not found: ${issueId}`));
+    });
+    getIssueTransitions = vi.fn().mockResolvedValue(mockTransitions);
+    transitionIssue = vi.fn().mockResolvedValue({});
+  }
+
   return {
-    default: vi.fn().mockImplementation(() => ({
-      getIssue: vi.fn().mockImplementation((issueId: string) => {
-        if (issueId === 'DVPS-336') return Promise.resolve(mockIssue336);
-        if (issueId === 'DVPS-339') return Promise.resolve(mockIssue339);
-        return Promise.reject(new Error(`Issue not found: ${issueId}`));
-      }),
-      getIssueTransitions: vi.fn().mockResolvedValue(mockTransitions),
-      transitionIssue: vi.fn().mockResolvedValue({}),
-    })),
+    default: MockJira,
   };
 });
 
