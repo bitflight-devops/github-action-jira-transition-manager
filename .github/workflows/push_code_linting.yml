@@ -15,7 +15,7 @@ jobs:
           cache: 'yarn'
       - run: yarn install
       - name: biome
-        uses: mongolyy/reviewdog-action-biome@v2.8.1
+        uses: mongolyy/reviewdog-action-biome@v2.9.0
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-review
