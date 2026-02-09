@@ -128,7 +128,7 @@
     "@types/sinon": "^21.0.0",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.2.4",
     "github-action-readme-generator": "1.9.2",
     "husky": "^9.1.7",
     "js-yaml": "^4.1.1",
