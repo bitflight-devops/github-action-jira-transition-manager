@@ -1,7 +1,5 @@
 import * as path from 'node:path';
 
-import * as core from '@actions/core';
-import * as github from '@actions/github';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Args } from '../src/@types';
@@ -10,6 +8,53 @@ import * as fsHelper from '../src/fs-helper';
 import * as inputHelper from '../src/input-helper';
 
 import { jiraTransitionsYaml } from './fixtures/jira-fixtures';
+
+// Inputs for mock @actions/core
+let inputs = {} as Record<string, string>;
+
+// Mock @actions/core
+vi.mock('@actions/core', () => ({
+  getInput: vi.fn((name: string) => inputs[name]),
+  error: vi.fn((message: string) => console.log(message)),
+  warning: vi.fn((message: string) => console.log(message)),
+  info: vi.fn((message: string) => console.log(message)),
+  debug: vi.fn((message: string) => console.log(message)),
+  setOutput: vi.fn(),
+  setFailed: vi.fn(),
+}));
+
+// Mock @actions/github - we'll mutate the context object directly in tests
+vi.mock('@actions/github', () => {
+  const mockContext = {
+    payload: {} as Record<string, unknown>,
+    eventName: '',
+    action: '',
+    sha: '1234567890123456789012345678901234567890',
+    ref: 'refs/heads/some-ref',
+    workflow: '',
+    actor: 'test-actor',
+    job: 'test-job',
+    runNumber: 1,
+    runId: 1,
+    apiUrl: 'https://api.github.com',
+    serverUrl: 'https://github.com',
+    graphqlUrl: 'https://api.github.com/graphql',
+    repo: {
+      owner: 'some-owner',
+      repo: 'some-repo',
+    },
+    issue: {
+      owner: 'some-owner',
+      repo: 'some-repo',
+      number: 1,
+    },
+  };
+
+  return {
+    context: mockContext,
+    getOctokit: vi.fn(),
+  };
+});
 
 // Define mock data inline (vi.mock is hoisted, so we can't use imports)
 const mockIssue336 = {
@@ -121,33 +166,13 @@ const issues = 'DVPS-336,DVPS-339';
 // Use a function so we always read the current value of the environment variable when tests run.
 const getBaseUrl = () => process.env.JIRA_BASE_URL as string;
 
-// Inputs for mock @actions/core
-let inputs = {} as Record<string, string>;
-
-// Shallow clone original @actions/github context
-const originalContext = { ...github.context };
-
 describe('jira ticket transition', () => {
-  beforeAll(() => {
-    // Mock getInput
-    vi.spyOn(core, 'getInput').mockImplementation((name: string) => {
-      return inputs[name];
-    });
-    // Mock error/warning/info/debug
-    vi.spyOn(core, 'error').mockImplementation(console.log);
-    vi.spyOn(core, 'warning').mockImplementation(console.log);
-    vi.spyOn(core, 'info').mockImplementation(console.log);
-    vi.spyOn(core, 'debug').mockImplementation(console.log);
+  // Import the mocked module
+  let github: typeof import('@actions/github');
 
-    // Mock github context
-    vi.spyOn(github.context, 'repo', 'get').mockImplementation(() => {
-      return {
-        owner: 'some-owner',
-        repo: 'some-repo',
-      };
-    });
-    github.context.ref = 'refs/heads/some-ref';
-    github.context.sha = '1234567890123456789012345678901234567890';
+  beforeAll(async () => {
+    // Import github after mocking to get the mocked version
+    github = await import('@actions/github');
 
     // Mock ./fs-helper directoryExistsSync()
     vi.spyOn(fsHelper, 'directoryExistsSync').mockImplementation((fspath: string) => fspath === gitHubWorkspace);
@@ -162,6 +187,11 @@ describe('jira ticket transition', () => {
     inputs.issues = issues;
     inputs.jira_transitions_yaml = jiraTransitionsYaml;
     inputs.jira_base_url = getBaseUrl();
+
+    // Reset github context for each test
+    github.context.eventName = '';
+    github.context.action = '';
+    github.context.payload = {};
   });
 
   afterAll(() => {
@@ -170,10 +200,6 @@ describe('jira ticket transition', () => {
     if (originalGitHubWorkspace) {
       process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
     }
-
-    // Restore @actions/github context
-    github.context.ref = originalContext.ref;
-    github.context.sha = originalContext.sha;
 
     // Restore
     vi.restoreAllMocks();
