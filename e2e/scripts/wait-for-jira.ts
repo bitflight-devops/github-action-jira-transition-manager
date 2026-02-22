@@ -23,18 +23,18 @@ async function sleep(ms: number): Promise<void> {
  * - Server info can be retrieved
  * - Authentication is verified
  *
- * Implements fail-fast behavior: exits early if the same error occurs 12 consecutive times
- * (60 seconds of identical errors) AND Jira has responded successfully before (regression).
+ * Implements fail-fast behavior: exits early if the same error occurs 36 consecutive times
+ * (3 minutes of identical errors) AND Jira has responded successfully before (regression).
  * During initial startup, errors are expected and the full timeout is used.
  *
  * @returns A promise that resolves when Jira is ready
- * @throws Exits process with code 1 if times out (2 minutes) or regression detected
+ * @throws Exits process with code 1 if times out (5 minutes) or regression detected
  */
 async function waitForJira(): Promise<void> {
   const config = getE2EConfig();
   const client = new JiraE2EClient(config);
   const startTime = Date.now();
-  const timeout = 120000; // 2 minutes max
+  const timeout = 300000; // 5 minutes max (allows for two-phase haxqer startup: phase-1 exit + restart + phase-2)
   const pollInterval = 5000; // 5 seconds
 
   console.log(`Waiting for Jira at ${config.jira.baseUrl}...`);
@@ -44,7 +44,7 @@ async function waitForJira(): Promise<void> {
   let consecutiveSameError = 0;
   let lastErrorMessage = '';
   let hasEverResponded = false; // Track if Jira ever responded successfully
-  const maxConsecutiveSameError = 12; // 60 seconds of same error = fail (only after success)
+  const maxConsecutiveSameError = 36; // 3 minutes of same error = fail (only after success)
 
   while (Date.now() - startTime < timeout) {
     try {

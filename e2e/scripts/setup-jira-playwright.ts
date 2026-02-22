@@ -183,7 +183,7 @@ async function main() {
     // 3. Connect to UI
     console.log('\nStep 3: Connecting to Web UI...');
     let attempts = 0;
-    while (attempts < 60) {
+    while (attempts < 150) {
       try {
         await page.goto(JIRA_URL, { timeout: 10000 });
         const title = (await page.title()).toLowerCase();
@@ -201,7 +201,7 @@ async function main() {
       attempts++;
       await page.waitForTimeout(2000);
     }
-    if (attempts >= 60) throw new Error('Timeout waiting for Web UI');
+    if (attempts >= 150) throw new Error('Timeout waiting for Web UI');
 
     // 4. Application Properties
     console.log('\nStep 4: Application Properties...');
