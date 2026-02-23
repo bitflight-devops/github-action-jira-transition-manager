@@ -112,7 +112,7 @@ jobs:
           yarn e2e:snapshot:restore --force
           yarn e2e:up
           yarn e2e:wait
-        timeout-minutes: 5
+        timeout-minutes: 10
 
       - name: Full Jira setup (slow path)
         if: steps.snapshot-check.outputs.valid != 'true'
@@ -122,7 +122,7 @@ jobs:
           yarn e2e:setup
           yarn e2e:wait
           yarn e2e:seed
-        timeout-minutes: 15
+        timeout-minutes: 20
 
       - name: Run E2E tests
         run: yarn e2e:test

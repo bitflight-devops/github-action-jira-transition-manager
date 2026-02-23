@@ -61,7 +61,7 @@ jobs:
 
           echo "=== Seeding test data ==="
           yarn e2e:seed
-        timeout-minutes: 15
+        timeout-minutes: 20
 
       - name: Save snapshots
         run: |
