@@ -28,6 +28,12 @@ services:
         condition: service_healthy
     environment:
       TZ: UTC
+      # JDK 11.0.16 has a cgroupv2 bug (NullPointerException in CgroupV2Subsystem)
+      # that causes Catalina init to crash on GitHub Actions runners using cgroupv2 kernels.
+      # Disable container cgroup detection to work around this.
+      # _JAVA_OPTIONS is picked up by all JVMs regardless of launch mechanism.
+      _JAVA_OPTIONS: '-XX:-UseContainerSupport'
+      JVM_SUPPORT_RECOMMENDED_ARGS: '-XX:-UseContainerSupport'
     ports:
       - '8080:8080'
     volumes:
