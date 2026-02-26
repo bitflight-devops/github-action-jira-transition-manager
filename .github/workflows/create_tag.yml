@@ -42,6 +42,7 @@ jobs:
       - name: Update version
         id: version
         env:
+          HUSKY: '0'
           CHANGELOG: |
             # v%s
             ${{ steps.tag_version.outputs.changelog }}

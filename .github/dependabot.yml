@@ -21,26 +21,6 @@ updates:
           - '*'
     open-pull-requests-limit: 10
 
-  - package-ecosystem: 'docker'
-    directory: '/e2e/docker'
-    schedule:
-      interval: 'weekly'
-      day: 'monday'
-    assignees:
-      - 'Jamie-BitFlight'
-    reviewers:
-      - 'Jamie-BitFlight'
-    labels:
-      - 'docker'
-      - 'dependencies'
-    commit-message:
-      prefix: 'build'
-      include: 'scope'
-    groups:
-      docker:
-        patterns:
-          - '*'
-
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:

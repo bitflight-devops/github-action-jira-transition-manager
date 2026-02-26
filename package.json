@@ -145,5 +145,9 @@
   },
   "optionalDependencies": {
     "@swc/core-darwin-x64": "^1.15.10"
+  },
+  "resolutions": {
+    "minimist": "^1.2.8",
+    "ansi-regex": "^6.1.0"
   }
 }
