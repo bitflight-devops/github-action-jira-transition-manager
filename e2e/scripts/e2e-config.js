@@ -6,7 +6,7 @@ exports.getE2EConfig = exports.defaultConfig = void 0;
  */
 exports.defaultConfig = {
   jira: {
-    baseUrl: process.env.E2E_JIRA_BASE_URL || 'http://localhost:8080',
+    baseUrl: process.env.E2E_JIRA_BASE_URL || 'http://127.0.0.1:8080',
     auth: {
       type: 'basic',
       username: process.env.E2E_JIRA_USERNAME || 'admin',

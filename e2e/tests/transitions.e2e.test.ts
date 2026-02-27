@@ -2,7 +2,8 @@
  * E2E tests for Jira issue transitions
  * Tests the action logic against a real Jira instance
  */
-import type { Context } from '@actions/github/lib/context';
+import type { context } from '@actions/github';
+type Context = typeof context;
 import type { Args } from '../../src/@types';
 import { Action } from '../../src/action';
 import { getE2EConfig } from '../scripts/e2e-config';
@@ -84,30 +85,49 @@ describe('Jira Transition E2E Tests', () => {
     it(
       'should handle issue that does not exist gracefully',
       async () => {
-        const mockContext = {
-          eventName: 'push',
-          action: '',
-          payload: {},
-        } as Context;
+        // Intercept process.stdout.write to suppress @actions/core output during this test.
+        // @actions/core is ESM so vi.spyOn can't redefine its exports. Instead, capture
+        // stdout to prevent ##[warning] annotations from leaking into CI output.
+        const captured: string[] = [];
+        const originalWrite = process.stdout.write.bind(process.stdout);
+        process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
+          const str = typeof chunk === 'string' ? chunk : chunk.toString();
+          captured.push(str);
+          // Suppress GitHub Actions command annotations but let other output through
+          if (str.includes('##[') || str.includes('::')) {
+            return true;
+          }
+          return originalWrite(chunk, ...args);
+        }) as typeof process.stdout.write;
 
-        const args: Args = {
-          issues: 'E2E-999999', // Non-existent issue
-          failOnError: false, // Don't fail on error
-          jiraTransitionsYaml: '',
-          config: {
-            baseUrl: config.jira.baseUrl,
-            email: config.jira.auth.email || config.jira.auth.username || 'admin',
-            token: config.jira.auth.apiToken || config.jira.auth.password || 'admin',
-          },
-        };
+        try {
+          const mockContext = {
+            eventName: 'push',
+            action: '',
+            payload: {},
+          } as Context;
 
-        const action = new Action(mockContext, args);
+          const args: Args = {
+            issues: 'E2E-999999', // Non-existent issue
+            failOnError: false, // Don't fail on error
+            jiraTransitionsYaml: '',
+            config: {
+              baseUrl: config.jira.baseUrl,
+              email: config.jira.auth.email || config.jira.auth.username || 'admin',
+              token: config.jira.auth.apiToken || config.jira.auth.password || 'admin',
+            },
+          };
 
-        // When failOnError is false, execute() should not throw even for non-existent issues.
-        // It logs the error internally and returns false (no successful transitions).
-        // The "Failures: 1" output in logs is expected behavior, not a test failure.
-        const result = await action.execute();
-        expect(result).toBe(false);
+          const action = new Action(mockContext, args);
+          const result = await action.execute();
+          expect(result).toBe(false);
+
+          // Verify the action logged the expected warning about the non-existent issue
+          const output = captured.join('');
+          expect(output).toContain('Failed to process issue E2E-999999');
+        } finally {
+          process.stdout.write = originalWrite;
+        }
       },
       config.timeouts.testTimeout,
     );

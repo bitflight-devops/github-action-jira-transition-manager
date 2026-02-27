@@ -92413,17 +92413,18 @@ class Action {
         let failures = 0;
         const applyIssueList = [];
         for (const issueKey of issueList) {
-            applyIssueList.push(new Issue(issueKey.trim(), jira, argv, githubEvent)
+            const normalizedKey = issueKey.trim();
+            applyIssueList.push(new Issue(normalizedKey, jira, argv, githubEvent)
                 .build()
                 .then(async (issueObj) => this.transitionIssue(issueObj))
-                .catch((error$1) => {
+                .catch((error) => {
                 // Handle errors from build() (e.g., issue not found)
-                if (error$1 instanceof Error) {
+                if (error instanceof Error) {
                     if (argv.failOnError) {
-                        setFailed(error$1);
+                        setFailed(`Failed to process issue ${normalizedKey}: ${error.message}`);
                     }
                     else {
-                        error(`Failed to process issue ${issueKey}: ${error$1.message}`);
+                        warning(`Failed to process issue ${normalizedKey}: ${error.message}`);
                     }
                 }
                 return undefined;

@@ -42,7 +42,7 @@
     "version": "echo 'Run versioning commands';yarn generate-docs;echo \"::set-output name=tag::v${npm_package_version}\"",
     "postversion": "echo 'Running post versioning commands';git push --tags -f && git push && echo \"Successfully released version $npm_package_version!\"",
     "generate-docs": "github-action-readme-generator && biome format --write .ghadocs.json README.md && git add .ghadocs.json README.md",
-    "prepare": "husky && git config --global rebase.autosquash true",
+    "prepare": "test -n \"$CI\" || (husky && git config --global rebase.autosquash true)",
     "pre-push": "echo 'Running pre-push checks'; exit 0",
     "e2e:up": "cd e2e/docker && docker compose up -d --quiet-pull",
     "e2e:down": "cd e2e/docker && docker compose down -v",
@@ -145,5 +145,9 @@
   },
   "optionalDependencies": {
     "@swc/core-darwin-x64": "^1.15.10"
+  },
+  "resolutions": {
+    "minimist": "^1.2.8",
+    "ansi-regex": "^6.1.0"
   }
 }

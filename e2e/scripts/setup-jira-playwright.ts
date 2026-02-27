@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
-const JIRA_URL = process.env.JIRA_URL || 'http://localhost:8080';
+const JIRA_URL = process.env.JIRA_URL || 'http://127.0.0.1:8080';
 const CONTAINER_NAME = process.env.JIRA_CONTAINER || 'jira-e2e';
 const ADMIN_USER = process.env.E2E_JIRA_USERNAME || 'admin';
 const ADMIN_PASS = process.env.E2E_JIRA_PASSWORD || 'admin';

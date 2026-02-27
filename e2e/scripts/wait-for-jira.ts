@@ -3,6 +3,7 @@
  * Wait for Jira to be ready
  * Polls Jira until it responds to authenticated requests
  */
+import http from 'node:http';
 import { getE2EConfig } from './e2e-config';
 import { JiraE2EClient } from './jira-client';
 
@@ -13,6 +14,25 @@ import { JiraE2EClient } from './jira-client';
  */
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Makes an HTTP GET request using Node.js http module.
+ * Unlike fetch(), this provides detailed error codes (ECONNREFUSED, ECONNRESET, etc.)
+ */
+function httpGet(url: string, timeoutMs: number): Promise<{ statusCode: number }> {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+      // Consume response body to free socket
+      res.resume();
+      resolve({ statusCode: res.statusCode ?? 0 });
+    });
+    req.on('error', (err) => reject(err));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timed out'));
+    });
+  });
 }
 
 /**
@@ -28,13 +48,13 @@ async function sleep(ms: number): Promise<void> {
  * During initial startup, errors are expected and the full timeout is used.
  *
  * @returns A promise that resolves when Jira is ready
- * @throws Exits process with code 1 if times out (5 minutes) or regression detected
+ * @throws Exits process with code 1 if times out or regression detected
  */
 async function waitForJira(): Promise<void> {
   const config = getE2EConfig();
   const client = new JiraE2EClient(config);
   const startTime = Date.now();
-  const timeout = 300000; // 5 minutes max (allows for two-phase haxqer startup: phase-1 exit + restart + phase-2)
+  const timeout = config.timeouts.jiraReady; // Use config timeout (default 10 minutes)
   const pollInterval = 5000; // 5 seconds
 
   console.log(`Waiting for Jira at ${config.jira.baseUrl}...`);
@@ -48,18 +68,11 @@ async function waitForJira(): Promise<void> {
 
   while (Date.now() - startTime < timeout) {
     try {
-      // First check if HTTP is up
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      // First check if HTTP is up using http module (provides detailed error codes)
+      const result = await httpGet(`${config.jira.baseUrl}/status`, 5000);
 
-      const response = await fetch(`${config.jira.baseUrl}/status`, {
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP status: ${response.status}`);
+      if (result.statusCode < 200 || result.statusCode >= 400) {
+        throw new Error(`HTTP status: ${result.statusCode}`);
       }
 
       // Jira responded - mark for fail-fast eligibility on future errors
@@ -78,7 +91,8 @@ async function waitForJira(): Promise<void> {
     } catch (error) {
       lastError = error as Error;
       const elapsed = Math.round((Date.now() - startTime) / 1000);
-      const errorMsg = lastError.message;
+      const errorCode = (lastError as NodeJS.ErrnoException).code;
+      const errorMsg = errorCode ? `${lastError.message} (${errorCode})` : lastError.message;
 
       // Track consecutive same errors for fail-fast (only after Jira has responded once)
       if (errorMsg === lastErrorMessage) {
@@ -102,7 +116,8 @@ async function waitForJira(): Promise<void> {
   // Timeout reached
   console.error('✗ Timeout waiting for Jira to be ready');
   if (lastError) {
-    console.error('Last error:', lastError.message);
+    const errorCode = (lastError as NodeJS.ErrnoException).code;
+    console.error('Last error:', lastError.message, errorCode ? `(${errorCode})` : '');
   }
   process.exit(1);
 }

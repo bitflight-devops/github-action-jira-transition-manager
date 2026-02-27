@@ -17,7 +17,7 @@ on:
       - main
 
 env:
-  E2E_JIRA_BASE_URL: http://localhost:8080
+  E2E_JIRA_BASE_URL: http://127.0.0.1:8080
   E2E_JIRA_USERNAME: admin
   E2E_JIRA_PASSWORD: admin
   SNAPSHOT_RELEASE_TAG: e2e-snapshots
@@ -111,8 +111,22 @@ jobs:
           echo "=== Restoring Jira from snapshots ==="
           yarn e2e:snapshot:restore --force
           yarn e2e:up
+
+          echo "=== Verifying Docker port connectivity ==="
+          for i in $(seq 1 120); do
+            if curl -sf --max-time 3 http://127.0.0.1:8080/status >/dev/null 2>&1; then
+              echo "✓ Port 8080 reachable via curl after ${i} attempts"
+              break
+            fi
+            if [ $((i % 12)) -eq 0 ]; then
+              echo "⏳ Still waiting for port 8080... (${i}x5s = $((i*5))s)"
+              docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || true
+            fi
+            sleep 5
+          done
+
           yarn e2e:wait
-        timeout-minutes: 10
+        timeout-minutes: 15
 
       - name: Full Jira setup (slow path)
         if: steps.snapshot-check.outputs.valid != 'true'
@@ -134,14 +148,14 @@ jobs:
           ISSUE_KEY=$(curl -s -u admin:admin -X POST \
             -H "Content-Type: application/json" \
             -d '{"fields":{"project":{"key":"E2E"},"summary":"Action in-place test","issuetype":{"name":"Task"}}}' \
-            http://localhost:8080/rest/api/2/issue | jq -r '.key')
+            "$E2E_JIRA_BASE_URL/rest/api/2/issue" | jq -r '.key')
           echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
           echo "Created test issue: $ISSUE_KEY"
 
       - name: Test Action In-Place
         uses: ./
         env:
-          JIRA_BASE_URL: http://localhost:8080
+          JIRA_BASE_URL: ${{ env.E2E_JIRA_BASE_URL }}
           JIRA_USER_EMAIL: admin
           JIRA_API_TOKEN: admin
         with:
