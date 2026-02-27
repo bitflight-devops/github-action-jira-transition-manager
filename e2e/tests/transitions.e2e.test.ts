@@ -3,7 +3,8 @@
  * Tests the action logic against a real Jira instance
  */
 import * as core from '@actions/core';
-import type { Context } from '@actions/github/lib/context';
+import type { context } from '@actions/github';
+type Context = typeof context;
 import { type SpyInstance, vi } from 'vitest';
 import type { Args } from '../../src/@types';
 import { Action } from '../../src/action';

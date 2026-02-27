@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
-import type { Context } from '@actions/github/lib/context';
+import type { context } from '@actions/github';
+type Context = typeof context;
 
 import type { Args, JiraConfig } from './@types';
 import Issue, { type IssueOutput } from './Issue';

@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
-import type { Context } from '@actions/github/lib/context';
+import type { context } from '@actions/github';
+type Context = typeof context;
 import type { Version2Models } from 'jira.js';
 import _ from 'lodash';
 
