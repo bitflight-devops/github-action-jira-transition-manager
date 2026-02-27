@@ -92416,14 +92416,14 @@ class Action {
             applyIssueList.push(new Issue(issueKey.trim(), jira, argv, githubEvent)
                 .build()
                 .then(async (issueObj) => this.transitionIssue(issueObj))
-                .catch((error$1) => {
+                .catch((error) => {
                 // Handle errors from build() (e.g., issue not found)
-                if (error$1 instanceof Error) {
+                if (error instanceof Error) {
                     if (argv.failOnError) {
-                        setFailed(error$1);
+                        setFailed(error);
                     }
                     else {
-                        error(`Failed to process issue ${issueKey}: ${error$1.message}`);
+                        warning(`Failed to process issue ${issueKey}: ${error.message}`);
                     }
                 }
                 return undefined;

@@ -97,7 +97,7 @@ export class Action {
               if (argv.failOnError) {
                 core.setFailed(error);
               } else {
-                core.error(`Failed to process issue ${issueKey}: ${error.message}`);
+                core.warning(`Failed to process issue ${issueKey}: ${error.message}`);
               }
             }
             return undefined;
