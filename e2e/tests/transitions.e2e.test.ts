@@ -2,7 +2,9 @@
  * E2E tests for Jira issue transitions
  * Tests the action logic against a real Jira instance
  */
+import * as core from '@actions/core';
 import type { Context } from '@actions/github/lib/context';
+import { type SpyInstance, vi } from 'vitest';
 import type { Args } from '../../src/@types';
 import { Action } from '../../src/action';
 import { getE2EConfig } from '../scripts/e2e-config';
@@ -84,30 +86,46 @@ describe('Jira Transition E2E Tests', () => {
     it(
       'should handle issue that does not exist gracefully',
       async () => {
-        const mockContext = {
-          eventName: 'push',
-          action: '',
-          payload: {},
-        } as Context;
+        // Suppress core.warning/info/error output during this test since the action
+        // intentionally logs "Failed to process issue" and "Successes: 0 Failures: 1"
+        // which would otherwise leak into CI output as annotations.
+        const warningSpy = vi.spyOn(core, 'warning').mockImplementation(() => {});
+        const errorSpy = vi.spyOn(core, 'error').mockImplementation(() => {});
+        const infoSpy = vi.spyOn(core, 'info').mockImplementation(() => {});
+        const setOutputSpy = vi.spyOn(core, 'setOutput').mockImplementation(() => {});
 
-        const args: Args = {
-          issues: 'E2E-999999', // Non-existent issue
-          failOnError: false, // Don't fail on error
-          jiraTransitionsYaml: '',
-          config: {
-            baseUrl: config.jira.baseUrl,
-            email: config.jira.auth.email || config.jira.auth.username || 'admin',
-            token: config.jira.auth.apiToken || config.jira.auth.password || 'admin',
-          },
-        };
+        try {
+          const mockContext = {
+            eventName: 'push',
+            action: '',
+            payload: {},
+          } as Context;
 
-        const action = new Action(mockContext, args);
+          const args: Args = {
+            issues: 'E2E-999999', // Non-existent issue
+            failOnError: false, // Don't fail on error
+            jiraTransitionsYaml: '',
+            config: {
+              baseUrl: config.jira.baseUrl,
+              email: config.jira.auth.email || config.jira.auth.username || 'admin',
+              token: config.jira.auth.apiToken || config.jira.auth.password || 'admin',
+            },
+          };
 
-        // When failOnError is false, execute() should not throw even for non-existent issues.
-        // It logs the error internally and returns false (no successful transitions).
-        // The "Failures: 1" output in logs is expected behavior, not a test failure.
-        const result = await action.execute();
-        expect(result).toBe(false);
+          const action = new Action(mockContext, args);
+          const result = await action.execute();
+          expect(result).toBe(false);
+
+          // Verify the action logged the expected warning about the non-existent issue
+          expect(warningSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to process issue E2E-999999'),
+          );
+        } finally {
+          warningSpy.mockRestore();
+          errorSpy.mockRestore();
+          infoSpy.mockRestore();
+          setOutputSpy.mockRestore();
+        }
       },
       config.timeouts.testTimeout,
     );
