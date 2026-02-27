@@ -2,10 +2,8 @@
  * E2E tests for Jira issue transitions
  * Tests the action logic against a real Jira instance
  */
-import * as core from '@actions/core';
 import type { context } from '@actions/github';
 type Context = typeof context;
-import { type SpyInstance, vi } from 'vitest';
 import type { Args } from '../../src/@types';
 import { Action } from '../../src/action';
 import { getE2EConfig } from '../scripts/e2e-config';
@@ -87,13 +85,20 @@ describe('Jira Transition E2E Tests', () => {
     it(
       'should handle issue that does not exist gracefully',
       async () => {
-        // Suppress core.warning/info/error output during this test since the action
-        // intentionally logs "Failed to process issue" and "Successes: 0 Failures: 1"
-        // which would otherwise leak into CI output as annotations.
-        const warningSpy = vi.spyOn(core, 'warning').mockImplementation(() => {});
-        const errorSpy = vi.spyOn(core, 'error').mockImplementation(() => {});
-        const infoSpy = vi.spyOn(core, 'info').mockImplementation(() => {});
-        const setOutputSpy = vi.spyOn(core, 'setOutput').mockImplementation(() => {});
+        // Intercept process.stdout.write to suppress @actions/core output during this test.
+        // @actions/core is ESM so vi.spyOn can't redefine its exports. Instead, capture
+        // stdout to prevent ##[warning] annotations from leaking into CI output.
+        const captured: string[] = [];
+        const originalWrite = process.stdout.write.bind(process.stdout);
+        process.stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
+          const str = typeof chunk === 'string' ? chunk : chunk.toString();
+          captured.push(str);
+          // Suppress GitHub Actions command annotations but let other output through
+          if (str.includes('##[') || str.includes('::')) {
+            return true;
+          }
+          return originalWrite(chunk, ...args);
+        }) as typeof process.stdout.write;
 
         try {
           const mockContext = {
@@ -118,14 +123,10 @@ describe('Jira Transition E2E Tests', () => {
           expect(result).toBe(false);
 
           // Verify the action logged the expected warning about the non-existent issue
-          expect(warningSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Failed to process issue E2E-999999'),
-          );
+          const output = captured.join('');
+          expect(output).toContain('Failed to process issue E2E-999999');
         } finally {
-          warningSpy.mockRestore();
-          errorSpy.mockRestore();
-          infoSpy.mockRestore();
-          setOutputSpy.mockRestore();
+          process.stdout.write = originalWrite;
         }
       },
       config.timeouts.testTimeout,
