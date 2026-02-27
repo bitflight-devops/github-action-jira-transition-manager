@@ -87,17 +87,18 @@ export class Action {
     let failures = 0;
     const applyIssueList: Promise<IssueOutput | undefined>[] = [];
     for (const issueKey of issueList) {
+      const normalizedKey = issueKey.trim();
       applyIssueList.push(
-        new Issue(issueKey.trim(), jira, argv, githubEvent)
+        new Issue(normalizedKey, jira, argv, githubEvent)
           .build()
           .then(async (issueObj) => this.transitionIssue(issueObj))
           .catch((error) => {
             // Handle errors from build() (e.g., issue not found)
             if (error instanceof Error) {
               if (argv.failOnError) {
-                core.setFailed(error);
+                core.setFailed(`Failed to process issue ${normalizedKey}: ${error.message}`);
               } else {
-                core.warning(`Failed to process issue ${issueKey}: ${error.message}`);
+                core.warning(`Failed to process issue ${normalizedKey}: ${error.message}`);
               }
             }
             return undefined;
