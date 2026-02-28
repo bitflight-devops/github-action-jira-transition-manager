@@ -28965,7 +28965,7 @@ function getApiBaseUrl() {
     return process.env['GITHUB_API_URL'] || 'https://api.github.com';
 }
 
-function getUserAgent$3() {
+function getUserAgent() {
   if (typeof navigator === "object" && "userAgent" in navigator) {
     return navigator.userAgent;
   }
@@ -29107,27 +29107,13 @@ function Collection$1() {
 
 var Hook = { Collection: Collection$1 };
 
-function getUserAgent$2() {
-  if (typeof navigator === "object" && "userAgent" in navigator) {
-    return navigator.userAgent;
-  }
-
-  if (typeof process === "object" && process.version !== undefined) {
-    return `Node.js/${process.version.substr(1)} (${process.platform}; ${
-      process.arch
-    })`;
-  }
-
-  return "<environment undetectable>";
-}
-
 // pkg/dist-src/defaults.js
 
 // pkg/dist-src/version.js
 var VERSION$7 = "0.0.0-development";
 
 // pkg/dist-src/defaults.js
-var userAgent = `octokit-endpoint.js/${VERSION$7} ${getUserAgent$2()}`;
+var userAgent = `octokit-endpoint.js/${VERSION$7} ${getUserAgent()}`;
 var DEFAULTS = {
   method: "GET",
   baseUrl: "https://api.github.com",
@@ -29464,20 +29450,6 @@ function withDefaults$2(oldDefaults, newDefaults) {
 // pkg/dist-src/index.js
 var endpoint = withDefaults$2(null, DEFAULTS);
 
-function getUserAgent$1() {
-  if (typeof navigator === "object" && "userAgent" in navigator) {
-    return navigator.userAgent;
-  }
-
-  if (typeof process === "object" && process.version !== undefined) {
-    return `Node.js/${process.version.substr(1)} (${process.platform}; ${
-      process.arch
-    })`;
-  }
-
-  return "<environment undetectable>";
-}
-
 var fastContentTypeParse = {};
 
 var hasRequiredFastContentTypeParse;
@@ -29705,7 +29677,7 @@ var VERSION$6 = "10.0.7";
 // pkg/dist-src/defaults.js
 var defaults_default = {
   headers: {
-    "user-agent": `octokit-request.js/${VERSION$6} ${getUserAgent$1()}`
+    "user-agent": `octokit-request.js/${VERSION$6} ${getUserAgent()}`
   }
 };
 
@@ -29886,20 +29858,6 @@ function withDefaults$1(oldEndpoint, newDefaults) {
 var request = withDefaults$1(endpoint, defaults_default);
 /* v8 ignore next -- @preserve */
 /* v8 ignore else -- @preserve */
-
-function getUserAgent() {
-  if (typeof navigator === "object" && "userAgent" in navigator) {
-    return navigator.userAgent;
-  }
-
-  if (typeof process === "object" && process.version !== undefined) {
-    return `Node.js/${process.version.substr(1)} (${process.platform}; ${
-      process.arch
-    })`;
-  }
-
-  return "<environment undetectable>";
-}
 
 // pkg/dist-src/index.js
 
@@ -30092,7 +30050,7 @@ function createLogger(logger = {}) {
   }
   return logger;
 }
-const userAgentTrail = `octokit-core.js/${VERSION$4} ${getUserAgent$3()}`;
+const userAgentTrail = `octokit-core.js/${VERSION$4} ${getUserAgent()}`;
 class Octokit {
   static VERSION = VERSION$4;
   static defaults(defaults) {
