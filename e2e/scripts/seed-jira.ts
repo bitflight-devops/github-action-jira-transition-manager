@@ -3,6 +3,7 @@
  * Seed Jira with minimal test data
  * Idempotent - safe to run multiple times
  */
+import { fileURLToPath } from 'node:url';
 import { getE2EConfig } from './e2e-config.js';
 import { JiraE2EClient } from './jira-client.js';
 
@@ -72,7 +73,7 @@ async function seedJira(): Promise<void> {
 }
 
 // Run if called directly
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   seedJira().catch((error) => {
     console.error('Failed to seed Jira:', error);
     process.exit(1);

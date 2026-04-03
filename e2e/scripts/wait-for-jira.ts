@@ -4,6 +4,7 @@
  * Polls Jira until it responds to authenticated requests
  */
 import http from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { getE2EConfig } from './e2e-config.js';
 import { JiraE2EClient } from './jira-client.js';
 
@@ -123,7 +124,7 @@ async function waitForJira(): Promise<void> {
 }
 
 // Run if called directly
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   waitForJira().catch((error) => {
     console.error('Failed to wait for Jira:', error);
     process.exit(1);
