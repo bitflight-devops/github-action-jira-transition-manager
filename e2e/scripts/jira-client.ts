@@ -4,7 +4,7 @@
  */
 import { Version2Client, type Version2Models } from 'jira.js';
 
-import type { E2EConfig } from './e2e-config';
+import type { E2EConfig } from './e2e-config.js';
 
 // Constants for formatting and logging
 const MIN_ID_LENGTH_FOR_MASKING = 8;
