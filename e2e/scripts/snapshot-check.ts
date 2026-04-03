@@ -144,7 +144,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const inputDirIndex = args.indexOf('--input-dir');
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into snapshots/
-  let inputDir = path.join(__dirname, '..', '..', 'snapshots');
+  let inputDir = path.join(import.meta.dirname, '..', '..', 'snapshots');
 
   if (inputDirIndex !== -1 && args[inputDirIndex + 1]) {
     inputDir = path.resolve(args[inputDirIndex + 1]);

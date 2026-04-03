@@ -27,7 +27,7 @@ interface SnapshotConfig {
 
 const defaultConfig: SnapshotConfig = {
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into snapshots/
-  outputDir: path.join(__dirname, '..', '..', 'snapshots'),
+  outputDir: path.join(import.meta.dirname, '..', '..', 'snapshots'),
   volumes: [
     { name: 'jira-data', file: 'jira-data-snapshot.tar.gz' },
     { name: 'mysql-data', file: 'mysql-data-snapshot.tar.gz' },
@@ -87,7 +87,7 @@ function volumeExists(volumeName: string): boolean {
 function stopContainers(): void {
   console.log('Stopping containers to ensure data consistency...');
   // Go up two levels: dist/scripts/ -> dist/ -> e2e/, then into docker/
-  const composeDir = path.join(__dirname, '..', '..', 'docker');
+  const composeDir = path.join(import.meta.dirname, '..', '..', 'docker');
 
   try {
     execSync('docker compose stop', {

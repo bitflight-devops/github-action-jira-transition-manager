@@ -10,7 +10,7 @@
  */
 import { execSync, spawn } from 'node:child_process';
 
-import { getE2EConfig } from './e2e-config';
+import { getE2EConfig } from './e2e-config.js';
 
 const CONTAINER_NAME = 'jira-e2e';
 
@@ -788,7 +788,7 @@ async function setupJira(): Promise<void> {
 }
 
 // Run if called directly
-if (require.main === module) {
+if (process.argv[1] === new URL(import.meta.url).pathname) {
   const GLOBAL_TIMEOUT = 300000; // 5 minutes max
   const timeoutId = setTimeout(() => {
     console.error('✗ Setup timed out after 5 minutes');
