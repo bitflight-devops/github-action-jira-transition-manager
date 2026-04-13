@@ -32,10 +32,10 @@
   dependencies:
     "@actions/io" "^3.0.2"
 
-"@actions/github@^9.0.0":
-  version "9.0.0"
-  resolved "https://registry.yarnpkg.com/@actions/github/-/github-9.0.0.tgz#c86dae4128b2a6987271e2663bee9e766464840a"
-  integrity sha512-yJ0RoswsAaKcvkmpCE4XxBRiy/whH2SdTBHWzs0gi4wkqTDhXMChjSdqBz/F4AeiDlP28rQqL33iHb+kjAMX6w==
+"@actions/github@^9.0.0", "@actions/github@^9.1.0":
+  version "9.1.0"
+  resolved "https://registry.yarnpkg.com/@actions/github/-/github-9.1.0.tgz#06f5b292eb207323d3f4381d30d3a12e3ba7e863"
+  integrity sha512-u0hDGQeCS+7VNoLA8hYG65RLdPLMaPGfka0sZ0up7P0AiShqfX6xcuXNteGkQ7X7Tod7AMNwHd4p7DS63i8zzA==
   dependencies:
     "@actions/http-client" "^3.0.2"
     "@octokit/core" "^7.0.6"
@@ -1279,10 +1279,15 @@
   resolved "https://registry.yarnpkg.com/@swc/core-darwin-arm64/-/core-darwin-arm64-1.15.21.tgz#7153201537954b5f3b5748c315cdf0e0dcd533a8"
   integrity sha512-SA8SFg9dp0qKRH8goWsax6bptFE2EdmPf2YRAQW9WoHGf3XKM1bX0nd5UdwxmC5hXsBUZAYf7xSciCler6/oyA==
 
-"@swc/core-darwin-x64@1.15.21", "@swc/core-darwin-x64@^1.15.21":
+"@swc/core-darwin-x64@1.15.21":
   version "1.15.21"
   resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.15.21.tgz#05ff28c00a7045d9760c847e19604fff02b6e3ea"
   integrity sha512-//fOVntgowz9+V90lVsNCtyyrtbHp3jWH6Rch7MXHXbcvbLmbCTmssl5DeedUWLLGiAAW1wksBdqdGYOTjaNLw==
+
+"@swc/core-darwin-x64@^1.15.24":
+  version "1.15.24"
+  resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.15.24.tgz#99e38bdb00a6975d54471f77c345b4ee9bbb4502"
+  integrity sha512-fMIb/Zfn929pw25VMBhV7Ji2Dl+lCWtUPNdYJQYOke+00E5fcQ9ynxtP8+qhUo/HZc+mYQb1gJxwHM9vty+lXg==
 
 "@swc/core-linux-arm-gnueabihf@1.15.21":
   version "1.15.21"
