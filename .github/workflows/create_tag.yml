@@ -52,7 +52,7 @@ jobs:
           yarn version --patch --message "${CHANGELOG}"
 
       - name: Create a GitHub release
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
