@@ -112,7 +112,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@commitlint/cli": "^20",
+    "@commitlint/cli": "^21",
     "@commitlint/config-conventional": "^20",
     "@commitlint/prompt": "^20",
     "@rollup/plugin-commonjs": "^29.0.2",
