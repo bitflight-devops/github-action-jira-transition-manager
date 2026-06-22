@@ -10,7 +10,7 @@ jobs:
   tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         name: Checkout
         with:
           fetch-depth: 0
@@ -52,7 +52,7 @@ jobs:
           yarn version --patch --message "${CHANGELOG}"
 
       - name: Create a GitHub release
-        uses: softprops/action-gh-release@v3.0.0
+        uses: softprops/action-gh-release@v3.0.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
