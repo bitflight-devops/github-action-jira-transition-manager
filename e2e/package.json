@@ -1,5 +1,5 @@
 {
-  "type": "commonjs",
+  "type": "module",
   "private": true,
-  "description": "E2E test scripts compiled to CommonJS"
+  "description": "E2E test scripts compiled to ESM"
 }
