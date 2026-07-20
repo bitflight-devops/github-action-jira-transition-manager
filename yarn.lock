@@ -1297,10 +1297,15 @@
   resolved "https://registry.yarnpkg.com/@swc/core-darwin-arm64/-/core-darwin-arm64-1.15.43.tgz#386294f8427dde2df1a70dd0a5826d67af70e996"
   integrity sha512-v1aVuvXdo/BHxJzco9V2xpHrvwWmhfS8t6gziY5wJxd+Z2h8AeJRnAwPD8itCDaGXVBwJ/CaKfxEzTkG0Va0OA==
 
-"@swc/core-darwin-x64@1.15.43", "@swc/core-darwin-x64@^1.15.43":
+"@swc/core-darwin-x64@1.15.43":
   version "1.15.43"
   resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.15.43.tgz#c4823529c424e2ae25b7eb786438474741521fcb"
   integrity sha512-lp3d4Lamc8dt5huYdGLSR+9hLxmfr1jb0l+4XXG2zPqZwYWRN9R0U2qYoTrggiU2RWW0oV9VbWM3kBnqIc2kdQ==
+
+"@swc/core-darwin-x64@^1.15.46":
+  version "1.15.46"
+  resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.15.46.tgz#ddf16787e320636621180df480a3490fd9a868ca"
+  integrity sha512-4Tj4ppVIPCmUMpmGFiGtyEriwLyJ+yi/US4WfBrP/ok8COGddDZXLEzQETnKyK46mjvr1v0jevrS23zjoff7vA==
 
 "@swc/core-linux-arm-gnueabihf@1.15.43":
   version "1.15.43"
