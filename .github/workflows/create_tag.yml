@@ -18,7 +18,7 @@ jobs:
         run: |
           git config user.name "${GITHUB_USER:-github-actions}"
           git config user.email "${GITHUB_EMAIL:-github-actions@github.com}"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'yarn'
@@ -52,7 +52,7 @@ jobs:
           yarn version --patch --message "${CHANGELOG}"
 
       - name: Create a GitHub release
-        uses: softprops/action-gh-release@v3.0.1
+        uses: softprops/action-gh-release@v3.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
