@@ -141,7 +141,7 @@
     "sinon": "^22.1.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "optionalDependencies": {
     "@swc/core-darwin-x64": "^1.16.1"
