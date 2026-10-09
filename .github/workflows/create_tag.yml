@@ -20,7 +20,7 @@ jobs:
           git config user.email "${GITHUB_EMAIL:-github-actions@github.com}"
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24.19.0'
           cache: 'yarn'
       - name: Bump version and push tag
         id: tag_version
