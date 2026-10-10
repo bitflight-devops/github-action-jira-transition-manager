@@ -14,12 +14,16 @@ concurrency:
 
 jobs:
   tag:
+    name: Validate and publish the tested release tag
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
     env:
       TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
@@ -46,14 +50,6 @@ jobs:
         with:
           node-version: '24.19.0'
           cache: 'yarn'
-      - name: Generate release changelog
-        id: tag_version
-        uses: mathieudutour/github-tag-action@v7
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          commit_sha: ${{ github.event.workflow_run.head_sha }}
-          tag_prefix: 'v'
-          dry_run: 'true'
       - name: Install project dependencies
         run: yarn install --frozen-lockfile
       - name: Validate and build the tested revision
@@ -70,11 +66,6 @@ jobs:
       - name: Prepare and validate the release commit and tag
         id: version
         shell: bash
-        env:
-          CHANGELOG: |
-            chore(release): v%s
-
-            ${{ steps.tag_version.outputs.changelog }}
         run: |
           set -euo pipefail
           git fetch --tags origin
@@ -98,7 +89,7 @@ jobs:
           NODE
           )
           # preversion runs unit tests; version updates the generated documentation.
-          yarn version --new-version "$next_version" --message "${CHANGELOG}"
+          yarn version --new-version "$next_version" --message 'chore(release): v%s'
           release_version=$(node -p 'require("./package.json").version')
           if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo '::error::The release version is not a stable semantic version.'
@@ -129,12 +120,49 @@ jobs:
             "${RELEASE_COMMIT}:refs/heads/main" \
             "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
 
-      - name: Create a GitHub release
-        uses: softprops/action-gh-release@v3.0.3
+  # Re-run failed jobs to retry release creation using the successful tag job's
+  # outputs without repeating version preparation or the stale-main guard.
+  release:
+    name: Publish the GitHub release
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or resume the GitHub release
+        uses: actions/github-script@v8
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.tag.outputs.commit }}
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          target_commitish: ${{ steps.version.outputs.commit }}
-          name: Release ${{ steps.version.outputs.tag }}
-          body: ${{ steps.tag_version.outputs.changelog }}
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            let release;
+            for await (const { data: releases } of github.paginate.iterator(
+              github.rest.repos.listReleases,
+              { ...context.repo, per_page: 100 },
+            )) {
+              release = releases.find(candidate => candidate.tag_name === tag);
+              if (release) break;
+            }
+            if (release && !release.draft) {
+              core.info(`Release ${tag} is already published; nothing to do.`);
+              return;
+            }
+            if (release) {
+              await github.rest.repos.updateRelease({
+                ...context.repo,
+                release_id: release.id,
+                draft: false,
+                make_latest: 'legacy',
+              });
+              core.info(`Published existing draft ${tag}, preserving its notes.`);
+            } else {
+              await github.rest.repos.createRelease({
+                ...context.repo,
+                tag_name: tag,
+                target_commitish: process.env.RELEASE_COMMIT,
+                name: `Release ${tag}`,
+                generate_release_notes: true,
+                make_latest: 'legacy',
+              });
+              core.info(`Created release ${tag}.`);
+            }
