@@ -1,61 +1,140 @@
 name: 🏷️ Update Package Version and Create Tag
 on:
-  push:
-    branches:
-      - 'main'
-    tags-ignore:
-      - '**'
+  workflow_run:
+    workflows: ['E2E Tests - Jira']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
   tag:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@v7
-        name: Checkout
+        name: Checkout the revision that passed Jira E2E tests
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Reject a stale or mismatched test run
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          git fetch --no-tags origin refs/heads/main
+          if [ "$(git rev-parse FETCH_HEAD)" != "$TESTED_SHA" ]; then
+            echo '::error::main has moved since this revision passed Jira E2E tests.'
+            exit 1
+          fi
       - name: Set Git User Details
         run: |
           git config user.name "${GITHUB_USER:-github-actions}"
           git config user.email "${GITHUB_EMAIL:-github-actions@github.com}"
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24.19.0'
           cache: 'yarn'
-      - name: Bump version and push tag
+      - name: Generate release changelog
         id: tag_version
         uses: mathieudutour/github-tag-action@v7
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          commit_sha: ${{ github.event.workflow_run.head_sha }}
           tag_prefix: 'v'
           dry_run: 'true'
       - name: Install project dependencies
-        run: yarn --prefer-offline
-      - name: Build
-        run: yarn run build
-      - run: git add dist
+        run: yarn install --frozen-lockfile
+      - name: Validate and build the tested revision
+        run: |
+          yarn tsc --noEmit
+          yarn lint
+          yarn build
+          git diff --exit-code -- dist
       - run: |
           yarn config set version-tag-prefix "v"
           yarn config set version-commit-hooks true
           yarn config set version-git-tag true
           yarn config set version-sign-git-tag false
-      - name: Update version
+      - name: Prepare and validate the release commit and tag
         id: version
+        shell: bash
         env:
           CHANGELOG: |
-            # v%s
+            chore(release): v%s
+
             ${{ steps.tag_version.outputs.changelog }}
         run: |
-          ## yarn version will update the README with the new tagged version in the examples
-          ## and also creates a step output called 'tag' which is the new version
-          set -x
-          yarn version --patch --message "${CHANGELOG}"
+          set -euo pipefail
+          git fetch --tags origin
+          next_version=$(node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const parse = (value) => /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
+            ? value.split('.').map(BigInt) : null;
+          let highest = parse(require('./package.json').version);
+          if (!highest) throw new Error('The package version must be a stable semantic version');
+          for (const tag of execFileSync('git', ['tag', '--list', 'v*'], { encoding: 'utf8' }).trim().split('\n')) {
+            const candidate = parse(tag.slice(1));
+            if (!candidate) continue;
+            for (let index = 0; index < 3; index++) {
+              if (candidate[index] === highest[index]) continue;
+              if (candidate[index] > highest[index]) highest = candidate;
+              break;
+            }
+          }
+          highest[2] += 1n;
+          console.log(highest.join('.'));
+          NODE
+          )
+          # preversion runs unit tests; version updates the generated documentation.
+          yarn version --new-version "$next_version" --message "${CHANGELOG}"
+          release_version=$(node -p 'require("./package.json").version')
+          if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo '::error::The release version is not a stable semantic version.'
+            exit 1
+          fi
+          test "$release_version" = "$next_version"
+          release_tag="v${release_version}"
+          release_commit=$(git rev-parse HEAD)
+          test "$(git rev-parse "${release_tag}^{commit}")" = "$release_commit"
+          test "$(git rev-parse HEAD^)" = "$TESTED_SHA"
+          # The new commit may update release metadata, but must retain the tested action.
+          git diff --exit-code "$TESTED_SHA" "$release_commit" -- src dist action.yml yarn.lock
+          test -z "$(git status --porcelain)"
+          printf 'tag=%s\ncommit=%s\n' "$release_tag" "$release_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release commit and exact tag atomically
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT"
+          git fetch --no-tags origin refs/heads/main
+          test "$(git rev-parse FETCH_HEAD)" = "$TESTED_SHA"
+          git push --atomic origin \
+            "${RELEASE_COMMIT}:refs/heads/main" \
+            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
 
       - name: Create a GitHub release
         uses: softprops/action-gh-release@v3.0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{steps.version.outputs.tag}}
-          name: Release ${{steps.version.outputs.tag}}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ steps.version.outputs.commit }}
+          name: Release ${{ steps.version.outputs.tag }}
           body: ${{ steps.tag_version.outputs.changelog }}

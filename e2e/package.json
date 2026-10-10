@@ -1,5 +1,0 @@
-{
-  "type": "module",
-  "private": true,
-  "description": "E2E test scripts compiled to ESM"
-}

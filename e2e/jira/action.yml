@@ -1,0 +1,103 @@
+name: Prepare Jira Data Center E2E
+description: Restore or prepare and verify a disposable official Jira and PostgreSQL fixture
+inputs:
+  mode:
+    description: auto uses a valid cache or cold setup; cold always rebuilds; restore requires a valid cache
+    default: auto
+  fixture-key:
+    description: Exact cache key to restore; requires mode restore for producer/consumer verification
+    default: ''
+outputs:
+  base-url:
+    description: Jira REST and browser base URL on the runner
+    value: ${{ steps.init.outputs.base-url }}
+  fixture-key:
+    description: Cache key of the fixture that was prepared
+    value: ${{ steps.cache-key.outputs.key }}
+  fixture-source:
+    description: cold or cache
+    value: ${{ steps.prepare.outputs.fixture-source }}
+  artifact-path:
+    description: Directory containing Jira diagnostics
+    value: ${{ steps.init.outputs.artifact-path }}
+runs:
+  using: composite
+  steps:
+    - name: Initialize fixture contract
+      id: init
+      shell: bash
+      env:
+        HARNESS: ${{ github.action_path }}/harness.mjs
+        JIRA_E2E_ROOT: ${{ runner.temp }}/jira-e2e
+        REQUESTED_KEY: ${{ inputs.fixture-key }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        if [ -n "$REQUESTED_KEY" ] && [ "$MODE" != restore ]; then
+          echo '::error::An explicit fixture-key requires mode: restore.'
+          exit 1
+        fi
+        node "$HARNESS" init
+    - name: Restore Docker image layers
+      id: images
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.init.outputs.image-path }}
+        key: ${{ steps.init.outputs.image-key }}
+    - name: Load and verify pinned images
+      shell: bash
+      run: node "$JIRA_E2E_HARNESS" images
+    - name: Save Docker layers before tests
+      if: steps.images.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.init.outputs.image-path }}
+        key: ${{ steps.init.outputs.image-key }}
+    - name: Restore prepared database and Jira home
+      id: fixture
+      if: inputs.mode != 'cold'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.init.outputs.fixture-path }}
+        key: ${{ inputs.fixture-key || steps.init.outputs.fixture-prefix }}
+        restore-keys: ${{ inputs.fixture-key == '' && steps.init.outputs.fixture-prefix || '' }}
+    - name: Require the exact requested fixture
+      if: inputs.fixture-key != ''
+      shell: bash
+      env:
+        REQUESTED_KEY: ${{ inputs.fixture-key }}
+        MATCHED_KEY: ${{ steps.fixture.outputs.cache-matched-key }}
+      run: test "$REQUESTED_KEY" = "$MATCHED_KEY"
+    - name: Install setup browser
+      if: inputs.mode != 'restore'
+      shell: bash
+      env:
+        SETUP_DIRECTORY: ${{ github.action_path }}
+      run: |
+        npm ci --prefix "$SETUP_DIRECTORY" --ignore-scripts --no-audit --no-fund
+        node "$SETUP_DIRECTORY/node_modules/playwright/cli.js" install --with-deps chromium
+    - name: Prepare and verify fixture
+      id: prepare
+      shell: bash
+      env:
+        JIRA_E2E_MODE: ${{ inputs.mode }}
+      run: node "$JIRA_E2E_HARNESS" prepare
+    - name: Save verified fixture before action assertions
+      if: steps.prepare.outputs.save-fixture == 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.init.outputs.fixture-path }}
+        key: ${{ steps.init.outputs.fixture-key }}
+    - name: Record cache provenance
+      id: cache-key
+      shell: bash
+      env:
+        SOURCE: ${{ steps.prepare.outputs.fixture-source }}
+        MATCHED_KEY: ${{ steps.fixture.outputs.cache-matched-key }}
+        SAVED_KEY: ${{ steps.init.outputs.fixture-key }}
+      run: |
+        if [ "$SOURCE" = cache ]; then
+          echo "key=$MATCHED_KEY" >> "$GITHUB_OUTPUT"
+        else
+          echo "key=$SAVED_KEY" >> "$GITHUB_OUTPUT"
+        fi
+        echo "Jira fixture source: $SOURCE" >> "$GITHUB_STEP_SUMMARY"

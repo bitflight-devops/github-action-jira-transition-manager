@@ -1,0 +1,6 @@
+{
+  "jira": "atlassian/jira-software:10.3.26-ubuntu-jdk17-r1@sha256:b37175a70c53d0914f17be3fdc8a6b9048a91fb3b4e6eb111498201f643771e4",
+  "postgres": "postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4",
+  "jiraVersion": "10.3.26",
+  "platform": "linux/amd64"
+}

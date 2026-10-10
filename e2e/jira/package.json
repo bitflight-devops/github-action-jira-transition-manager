@@ -1,0 +1,11 @@
+{
+  "name": "jira-e2e-fixture",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.19.0"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}

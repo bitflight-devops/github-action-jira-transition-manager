@@ -2,208 +2,80 @@ name: E2E Tests - Jira
 
 on:
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
-      skip_snapshots:
-        description: 'Skip snapshot restore (force full setup)'
-        required: false
-        default: 'false'
-        type: boolean
-  push:
-    branches:
-      - main
+      mode:
+        description: Jira fixture preparation mode
+        type: choice
+        options: [auto, cold, restore]
+        default: auto
 
-env:
-  E2E_JIRA_BASE_URL: http://127.0.0.1:8080
-  E2E_JIRA_USERNAME: admin
-  E2E_JIRA_PASSWORD: admin
-  SNAPSHOT_RELEASE_TAG: e2e-snapshots
+permissions:
+  contents: read
 
 jobs:
   e2e-jira:
-    name: E2E Tests with Dockerized Jira
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-
+    name: Packaged action against Jira Data Center
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
-          cache: 'yarn'
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium
-
-      - name: Build action and E2E scripts
+          node-version: '24.19.0'
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Build packaged action
         run: yarn build
-
-      - name: Cache Docker images
-        id: cache-docker
-        uses: actions/cache@v6
+      - name: Reject stale committed action bundle
+        run: git diff --exit-code -- dist
+      - name: Prepare disposable Jira
+        id: jira
+        uses: ./e2e/jira
         with:
-          path: /tmp/docker-images
-          key: docker-images-v1-${{ hashFiles('e2e/docker/compose.yml') }}
-
-      - name: Load cached Docker images
-        if: steps.cache-docker.outputs.cache-hit == 'true'
-        run: |
-          if [ -f /tmp/docker-images/jira.tar ]; then
-            docker load -i /tmp/docker-images/jira.tar
-          fi
-          if [ -f /tmp/docker-images/mysql.tar ]; then
-            docker load -i /tmp/docker-images/mysql.tar
-          fi
-
-      - name: Pull and cache Docker images
-        if: steps.cache-docker.outputs.cache-hit != 'true'
-        run: |
-          docker pull haxqer/jira:9.17.5
-          docker pull mysql:8.0
-          mkdir -p /tmp/docker-images
-          docker save haxqer/jira:9.17.5 -o /tmp/docker-images/jira.tar
-          docker save mysql:8.0 -o /tmp/docker-images/mysql.tar
-
-      - name: Download snapshots from release
-        id: download-snapshots
-        if: ${{ github.event.inputs.skip_snapshots != 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Attempting to download snapshots from release..."
-          if gh release download ${{ env.SNAPSHOT_RELEASE_TAG }} \
-              --pattern 'e2e-snapshots.tar.gz' \
-              --dir /tmp 2>/dev/null; then
-            echo "Extracting snapshots..."
-            mkdir -p e2e/snapshots
-            tar -xzf /tmp/e2e-snapshots.tar.gz -C e2e/snapshots
-            echo "downloaded=true" >> $GITHUB_OUTPUT
-            echo "Snapshots downloaded and extracted:"
-            ls -lah e2e/snapshots/
-          else
-            echo "No snapshot release found, will run full setup"
-            echo "downloaded=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check snapshot validity
-        id: snapshot-check
-        run: |
-          if yarn e2e:snapshot:check --quiet; then
-            echo "valid=true" >> $GITHUB_OUTPUT
-            echo "Snapshots are valid and ready to restore"
-          else
-            echo "valid=false" >> $GITHUB_OUTPUT
-            echo "Snapshots not available or invalid, will run full setup"
-          fi
-
-      - name: Restore from snapshots (fast path)
-        if: steps.snapshot-check.outputs.valid == 'true'
-        run: |
-          echo "=== Restoring Jira from snapshots ==="
-          yarn e2e:snapshot:restore --force
-          yarn e2e:up
-
-          echo "=== Verifying Docker port connectivity ==="
-          for i in $(seq 1 120); do
-            if curl -sf --max-time 3 http://127.0.0.1:8080/status >/dev/null 2>&1; then
-              echo "✓ Port 8080 reachable via curl after ${i} attempts"
-              break
-            fi
-            if [ $((i % 12)) -eq 0 ]; then
-              echo "⏳ Still waiting for port 8080... (${i}x5s = $((i*5))s)"
-              docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || true
-            fi
-            sleep 5
-          done
-
-          yarn e2e:wait
-        timeout-minutes: 15
-
-      - name: Full Jira setup (slow path)
-        if: steps.snapshot-check.outputs.valid != 'true'
-        run: |
-          echo "=== Running full Jira setup ==="
-          yarn e2e:up
-          yarn e2e:setup
-          yarn e2e:wait
-          yarn e2e:seed
-        timeout-minutes: 20
-
-      - name: Run E2E tests
+          mode: ${{ inputs.mode || 'auto' }}
+      - name: Exercise packaged action and verify Jira effects
         run: yarn e2e:test
-        timeout-minutes: 10
-
-      - name: Create test issue for action
-        id: create-issue
-        run: |
-          ISSUE_KEY=$(curl -s -u admin:admin -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"fields":{"project":{"key":"E2E"},"summary":"Action in-place test","issuetype":{"name":"Task"}}}' \
-            "$E2E_JIRA_BASE_URL/rest/api/2/issue" | jq -r '.key')
-          echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
-          echo "Created test issue: $ISSUE_KEY"
-
-      - name: Test Action In-Place
+      - name: Arrange native action smoke test
+        id: fixture
+        run: node e2e/in-place.mjs arrange
+      - name: Execute the action through its GitHub manifest
+        id: action
         uses: ./
+        with:
+          issues: ${{ steps.fixture.outputs.issue_key }}
+          jira_base_url: ${{ steps.jira.outputs.base-url }}
+          jira_user_email: admin
+          jira_api_token: admin
+          fail_on_error: 'true'
+          jira_transitions_yaml: |
+            projects:
+              E2E:
+                ignored_states: []
+                to_state:
+                  In Progress:
+                    - eventName: pull_request
+                    - eventName: push
+                    - eventName: workflow_dispatch
+      - name: Assert the native action changed Jira and reported the change
         env:
-          JIRA_BASE_URL: ${{ env.E2E_JIRA_BASE_URL }}
-          JIRA_USER_EMAIL: admin
-          JIRA_API_TOKEN: admin
-        with:
-          issues: ${{ steps.create-issue.outputs.issue_key }}
-
-      - name: Collect and display Docker logs on failure
+          ISSUE_KEY: ${{ steps.fixture.outputs.issue_key }}
+          ACTION_OUTPUTS: ${{ steps.action.outputs.issueOutputs }}
+        run: node e2e/in-place.mjs verify
+      - name: Collect diagnostics
+        if: failure() && env.JIRA_E2E_HARNESS != ''
+        run: node "$JIRA_E2E_HARNESS" logs
+      - uses: actions/upload-artifact@v7
         if: failure()
-        run: |
-          mkdir -p e2e/artifacts
-          cp -r /tmp/jira-setup* e2e/artifacts/ 2>/dev/null || true
-
-          echo "=========================================="
-          echo "=== DOCKER CONTAINER STATUS ==="
-          echo "=========================================="
-          docker ps -a | tee e2e/artifacts/containers.txt
-
-          echo ""
-          echo "=========================================="
-          echo "=== DOCKER STATS ==="
-          echo "=========================================="
-          docker stats --no-stream 2>&1 | tee e2e/artifacts/stats.txt || true
-
-          echo ""
-          echo "=========================================="
-          echo "=== JIRA CONTAINER LOGS (last 200 lines) ==="
-          echo "=========================================="
-          docker logs --tail 200 jira-e2e 2>&1 | tee e2e/artifacts/jira-logs.txt || true
-
-          echo ""
-          echo "=========================================="
-          echo "=== MYSQL CONTAINER LOGS (last 100 lines) ==="
-          echo "=========================================="
-          docker logs --tail 100 jira-e2e-mysql 2>&1 | tee e2e/artifacts/mysql-logs.txt || true
-
-          echo ""
-          echo "=========================================="
-          echo "=== FULL DOCKER COMPOSE LOGS ==="
-          echo "=========================================="
-          yarn e2e:logs 2>&1 | tee e2e/artifacts/docker-logs.txt || true
-
-      - name: Upload E2E artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
         with:
-          name: e2e-artifacts
-          path: e2e/artifacts/
+          name: jira-action-diagnostics
+          path: |
+            ${{ runner.temp }}/jira-e2e/artifacts
+            e2e/artifacts
           retention-days: 7
-
-      - name: Stop Docker Compose
-        if: always()
-        run: yarn e2e:down
+      - name: Remove disposable environment
+        if: always() && env.JIRA_E2E_HARNESS != ''
+        run: node "$JIRA_E2E_HARNESS" down

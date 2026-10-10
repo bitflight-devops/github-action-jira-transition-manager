@@ -2,7 +2,9 @@ import * as fs from 'node:fs';
 
 import * as core from '@actions/core';
 import type { context } from '@actions/github';
+
 type Context = typeof context;
+
 import * as YAML from 'yaml';
 
 import type { Args } from './@types';
@@ -14,8 +16,8 @@ import type Jira from './Jira';
  * @param v - The value to check
  * @returns True if the value is a non-null object, false otherwise
  */
-export const isObject = (v: any): boolean => {
-  return v && typeof v === 'object';
+export const isObject = (v: unknown): v is Record<string, unknown> => {
+  return v !== null && typeof v === 'object';
 };
 
 /**
@@ -24,7 +26,7 @@ export const isObject = (v: any): boolean => {
  * @param v2 - The second value to compare
  * @returns True if the values are strictly equal, false otherwise
  */
-export function objEquals(v1: any, v2: any): boolean {
+export function objEquals(v1: unknown, v2: unknown): boolean {
   core.debug(`Comparing a:${JSON.stringify(v1)} to b:${JSON.stringify(v2)} (${v1 === v2})`);
   return v1 === v2;
 }
@@ -34,12 +36,12 @@ export function objEquals(v1: any, v2: any): boolean {
  * For nested objects, performs deep comparison. For primitive values, uses strict equality.
  * @param a - The object to check (typically GitHub context payload)
  * @param b - The conditions object to match against
- * @returns True if any key in `b` matches the corresponding value in `a`
+ * @returns True if every condition in `b` matches the corresponding value in `a`
  */
-export function checkConditions(a: any, b: any): boolean {
-  return Object.keys(b).some((k) => {
-    return isObject(a[k]) && isObject(b[k]) ? checkConditions(a[k], b[k]) : objEquals(a[k], b[k]);
-  });
+export function checkConditions(a: unknown, b: unknown): boolean {
+  if (!isObject(b)) return objEquals(a, b);
+  if (!isObject(a)) return false;
+  return Object.keys(b).every((key) => checkConditions(a[key], b[key]));
 }
 
 export type GitHubEventConditions = {
@@ -164,6 +166,10 @@ export default class TransitionEventManager {
     core.debug(`starting githubEventToState(${currentProjectName})`);
     core.debug(`Github Context is \n${YAML.stringify(this.context)}`);
 
+    // YAML's top-level action condition refers to the webhook action. In the
+    // toolkit context, `action` is GITHUB_ACTION (the executing step identifier).
+    const eventContext = { ...this.context, action: this.context.payload.action };
+
     if (Object.hasOwn(this.projects, currentProjectName)) {
       core.debug(`looping through Projects to get transition conditions`);
 
@@ -173,7 +179,7 @@ export default class TransitionEventManager {
 
         for (const ixConditions of Object.values(transitionEvent.to_state[stateName])) {
           core.debug(`Checking GitHub payload is compared to: \n${YAML.stringify(ixConditions)}`);
-          if (checkConditions(this.context, ixConditions)) {
+          if (checkConditions(eventContext, ixConditions)) {
             core.debug(`Checking GitHub payload meets the conditions to transition to ${stateName}`);
             return stateName;
           }

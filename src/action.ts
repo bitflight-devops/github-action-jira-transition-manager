@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import type { context } from '@actions/github';
+
 type Context = typeof context;
 
 import type { Args, JiraConfig } from './@types';
@@ -65,7 +66,7 @@ export class Action {
           if (this.argv.failOnError) {
             core.setFailed(error);
           } else {
-            core.error(error);
+            core.warning(`Failed to transition issue ${issueObj.issue}: ${error.message}`);
           }
         }
         return undefined;
@@ -79,7 +80,7 @@ export class Action {
    * and transitions them in parallel. Reports success/failure counts and
    * sets the action output with the results.
    *
-   * @returns True if at least one issue was successfully transitioned, false otherwise
+   * @returns True if at least one issue was processed successfully, including unchanged issues
    */
   async execute(): Promise<boolean> {
     const { argv, jira, githubEvent } = this;

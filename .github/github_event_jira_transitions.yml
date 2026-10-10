@@ -10,15 +10,17 @@ projects:
         - eventName: pull_request
           action: 'opened'
         - eventName: pull_request
-          action: 'synchronized'
+          action: 'synchronize'
       'testing':
         - eventName: pull_request
           payload:
-            merged: true
+            pull_request:
+              merged: true
           action: 'closed'
         - eventName: pull_request_review
           payload:
-            state: 'APPROVED'
+            review:
+              state: 'approved'
   DVPS:
     ignored_states:
       - 'done'
@@ -30,12 +32,14 @@ projects:
         - eventName: pull_request
           action: 'opened'
         - eventName: pull_request
-          action: 'synchronized'
+          action: 'synchronize'
       'testing':
         - eventName: pull_request
           payload:
-            merged: true
+            pull_request:
+              merged: true
           action: 'closed'
         - eventName: pull_request_review
           payload:
-            state: 'APPROVED'
+            review:
+              state: 'approved'

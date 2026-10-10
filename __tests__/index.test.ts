@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 
+import * as core from '@actions/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Args } from '../src/@types';
@@ -15,10 +16,10 @@ let inputs = {} as Record<string, string>;
 // Mock @actions/core
 vi.mock('@actions/core', () => ({
   getInput: vi.fn((name: string) => inputs[name]),
-  error: vi.fn((message: string) => console.log(message)),
-  warning: vi.fn((message: string) => console.log(message)),
-  info: vi.fn((message: string) => console.log(message)),
-  debug: vi.fn((message: string) => console.log(message)),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+  debug: vi.fn(),
   setOutput: vi.fn(),
   setFailed: vi.fn(),
 }));
@@ -150,7 +151,11 @@ vi.mock('../src/Jira', () => {
       return Promise.reject(new Error(`Issue not found: ${issueId}`));
     });
     getIssueTransitions = vi.fn().mockResolvedValue(mockTransitions);
-    transitionIssue = vi.fn().mockResolvedValue({});
+    transitionIssue = vi.fn().mockImplementation(async (issueId: string, transition: { to: { name: string } }) => {
+      const issue = issueId === 'DVPS-336' ? mockIssue336 : mockIssue339;
+      issue.fields.status.name = transition.to.name;
+      return {};
+    });
   }
 
   return {
@@ -165,6 +170,14 @@ const issues = 'DVPS-336,DVPS-339';
 // Note: baseUrl is read from the JIRA_BASE_URL environment variable.
 // Use a function so we always read the current value of the environment variable when tests run.
 const getBaseUrl = () => process.env.JIRA_BASE_URL as string;
+
+function expectOutputStatus(status: string): void {
+  const output = vi.mocked(core.setOutput).mock.lastCall?.[1];
+  expect(JSON.parse(output as string)).toEqual([
+    expect.objectContaining({ issue: 'DVPS-336', beforestatus: 'To Do', status }),
+    expect.objectContaining({ issue: 'DVPS-339', beforestatus: 'To Do', status }),
+  ]);
+}
 
 describe('jira ticket transition', () => {
   // Import the mocked module
@@ -190,14 +203,17 @@ describe('jira ticket transition', () => {
 
     // Reset github context for each test
     github.context.eventName = '';
-    github.context.action = '';
+    github.context.action = 'transition-step';
     github.context.payload = {};
+    mockIssue336.fields.status.name = 'To Do';
+    mockIssue339.fields.status.name = 'To Do';
   });
 
   afterAll(() => {
     // Restore GitHub workspace
-    process.env.GITHUB_WORKSPACE = undefined;
-    if (originalGitHubWorkspace) {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
       process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
     }
 
@@ -219,6 +235,8 @@ describe('jira ticket transition', () => {
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expect(action.jira.transitionIssue).not.toHaveBeenCalled();
+    expectOutputStatus('To Do');
   });
 
   it('GitHub Event: start_test', async () => {
@@ -227,6 +245,7 @@ describe('jira ticket transition', () => {
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expectOutputStatus('On Hold');
   });
 
   it('GitHub Event: create', async () => {
@@ -235,42 +254,46 @@ describe('jira ticket transition', () => {
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expectOutputStatus('In Progress');
   });
 
   it('GitHub Event: pull_request, Github Action: opened', async () => {
     github.context.eventName = 'pull_request';
-    github.context.action = 'opened';
+    github.context.payload = { action: 'opened' };
     const settings: Args = inputHelper.getInputs();
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expectOutputStatus('Code Review');
   });
 
-  it('GitHub Event: pull_request, Github Action: synchronized', async () => {
+  it('GitHub Event: pull_request, webhook action: synchronize', async () => {
     github.context.eventName = 'pull_request';
-    github.context.action = 'synchronized';
+    github.context.payload = { action: 'synchronize' };
     const settings: Args = inputHelper.getInputs();
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expectOutputStatus('Code Review');
   });
 
   it('GitHub Event: pull_request, Github Action: closed, GitHub Payload: merged', async () => {
     github.context.eventName = 'pull_request';
-    github.context.action = 'closed';
-    github.context.payload.merged = true;
+    github.context.payload = { action: 'closed', pull_request: { number: 42, merged: true } };
     const settings: Args = inputHelper.getInputs();
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expectOutputStatus('testing');
   });
 
-  it('GitHub Event: pull_request_review, Github State: APPROVED', async () => {
+  it('GitHub Event: pull_request_review, review state: approved', async () => {
     github.context.eventName = 'pull_request_review';
-    github.context.payload.state = 'APPROVED';
+    github.context.payload = { action: 'submitted', review: { state: 'approved' } };
     const settings: Args = inputHelper.getInputs();
     const action = new Action(github.context, settings);
     const result = await action.execute();
     expect(result).toEqual(true);
+    expectOutputStatus('testing');
   });
 });
