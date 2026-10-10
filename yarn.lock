@@ -1943,10 +1943,10 @@ get-proto@^1.0.1:
     dunder-proto "^1.0.1"
     es-object-atoms "^1.0.0"
 
-github-action-readme-generator@1.12.9:
-  version "1.12.9"
-  resolved "https://registry.yarnpkg.com/github-action-readme-generator/-/github-action-readme-generator-1.12.9.tgz#15a8bf4848ed4299cd25f01494a3124e3f3b2fb2"
-  integrity sha512-AXzHmAJbOINR1jkx6nDHt8nVklf50wA5vpn1g1+Oe8zEB2RB0WW9oPtVeNQheV/sEkMIeeTu0FQQPhHA4b9B3w==
+github-action-readme-generator@2.0.4:
+  version "2.0.4"
+  resolved "https://registry.yarnpkg.com/github-action-readme-generator/-/github-action-readme-generator-2.0.4.tgz#c0561ef9fcf406486703783a56ceb76abc63d468"
+  integrity sha512-8tMJSOsooy/CF9D9eHd4EO8HfF+MrW/B5qqQWdlXQa7Rxj67TRadE8Ujkd3YGNtqm2lCkbjGD7Qr7KfeBKzpVQ==
   dependencies:
     "@actions/core" "^3.0.0"
     "@actions/github" "^9.0.0"
