@@ -1,6 +1,8 @@
 import * as core from '@actions/core';
 import type { context } from '@actions/github';
+
 type Context = typeof context;
+
 import type { Version2Models } from 'jira.js';
 import _ from 'lodash';
 
@@ -69,7 +71,7 @@ export default class Issue {
    */
   constructor(issue: string, jira: Jira, argv: Args, context: Context) {
     this.issue = issue;
-    const issuePattern = /^(?<projectName>[A-Z]{2,10})-\d+$/i;
+    const issuePattern = /^(?<projectName>[A-Z][A-Z0-9_]*)-\d+$/i;
     const pmatch = issuePattern.exec(issue);
     this.projectName = pmatch?.groups?.projectName.toUpperCase() ?? '';
     this.jira = jira;
@@ -115,78 +117,64 @@ export default class Issue {
   /**
    * Determines whether the issue requires a transition based on its current status.
    *
-   * An issue does not require transition if its current status is in the
-   * project's ignored states list.
+   * Skips unmatched events, already-target issues, and the project's ignored
+   * states. Jira status names are compared without regard to case.
    *
    * @returns True if the issue should be transitioned, false if it should be skipped
    */
   requiresTransition(): boolean {
-    if (this.beforeStatus === null) return false;
-    // check for current status vs ignored status
-    return !this.transitionEventManager.getIgnoredStates(this.projectName).includes(this.beforeStatus);
+    if (!(this.beforeStatus && this.toStatus)) return false;
+    const currentStatus = this.beforeStatus.toLowerCase();
+    if (currentStatus === this.toStatus.toLowerCase()) return false;
+    return !this.transitionEventManager
+      .getIgnoredStates(this.projectName)
+      .some((ignoredStatus) => ignoredStatus.toLowerCase() === currentStatus);
   }
 
   /**
    * Finds the appropriate transition to apply based on the target status.
    *
-   * First attempts to match by target status name (toStatus), then falls back
-   * to matching by transition name (status).
+   * Matches the destination status rather than the transition's display name.
    *
    * @returns The matching transition object, or undefined if no match is found
    */
   transitionToApply(): Version2Models.IssueTransition | undefined {
-    if (this.toStatus) {
-      const iT = _.find(this.issueTransitions, (t) => {
-        if (t.to && t.to.name?.toLowerCase() === this.toStatus?.toLowerCase()) {
-          return true;
-        }
-      }) as Version2Models.IssueTransition;
-      return {
-        ...iT,
-        isGlobal: true,
-      } as Version2Models.IssueTransition;
-    }
-    if (this.status) {
-      return _.find(this.issueTransitions, (t) => {
-        if (t.name?.toLowerCase?.() === this.status?.toLowerCase()) {
-          return true;
-        }
-      }) as Version2Models.IssueTransition;
-    }
-    return undefined;
+    if (!this.toStatus) return undefined;
+    return this.issueTransitions?.find(
+      (transition) => transition.to?.name?.toLowerCase() === this.toStatus?.toLowerCase(),
+    );
   }
 
   /**
    * Executes the transition on the Jira issue.
    *
-   * If a matching transition is found, applies it to the issue and updates
-   * the status. If no transition is found, logs the available transitions.
+   * Applies a matching transition and reads back the resulting status. With no
+   * matching event, lists available transitions. Ignored and already-target
+   * issues remain unchanged.
    *
-   * @throws Error if the transition fails and failOnError is enabled in argv
+   * @throws Error if the configured target is unavailable or Jira rejects the transition
    */
   async transition(): Promise<void> {
-    const transitionToApply = this.transitionToApply();
-
-    if (transitionToApply?.name) {
-      core.info(`${this.issue} will attempt to transition to: ${JSON.stringify(transitionToApply)}`);
-
-      try {
-        core.info(`Applying transition for ${this.issue}`);
-        await this.jira.transitionIssue(this.issue, transitionToApply);
-        this.status = await this.getStatus(true);
-        core.info(`Changed ${this.issue} status from ${this.beforeStatus} to ${this.status}.`);
-      } catch (error) {
-        core.error(`Transition failed for ${this.issue}`);
-        if (this.argv.failOnError) {
-          throw error;
-        } else if (error instanceof Error) {
-          core.error(error);
-        }
-      }
-    } else {
+    if (!this.toStatus) {
       core.info('Possible transitions:');
       core.info(this.transitionsLogString.join('\n'));
+      return;
     }
+
+    if (!this.requiresTransition()) {
+      core.info(`Skipping ${this.issue}: status ${this.beforeStatus} is ignored or already matches ${this.toStatus}.`);
+      return;
+    }
+
+    const transitionToApply = this.transitionToApply();
+    if (!transitionToApply?.id) {
+      throw new Error(`No available transition for ${this.issue} from ${this.beforeStatus} to ${this.toStatus}`);
+    }
+
+    core.info(`Applying transition for ${this.issue} to ${this.toStatus}`);
+    await this.jira.transitionIssue(this.issue, transitionToApply);
+    this.status = await this.getStatus(true);
+    core.info(`Changed ${this.issue} status from ${this.beforeStatus} to ${this.status}.`);
   }
 
   /**

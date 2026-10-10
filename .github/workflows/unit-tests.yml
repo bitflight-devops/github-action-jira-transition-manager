@@ -32,3 +32,9 @@ jobs:
 
       - name: Build
         run: yarn build
+
+      - name: Verify the committed action bundle
+        run: git diff --exit-code -- dist
+
+      - name: Test fixture validation and readiness
+        run: yarn e2e:fixture:test

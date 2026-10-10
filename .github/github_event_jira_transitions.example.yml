@@ -1,12 +1,16 @@
 projects:
-  <Jira project name>:
+  PROJECT1:
     ignored_states:
-      - '<job state that should be auto transitioned from 1>'
-      - '<job state that should be auto transitioned from 2>'
+      - Done
     to_state:
-      <job state>:
-        - <github event name>:
-          <github event payload key 1>: '<payload key expected value>'
-        - <github event name>:
-          <github event payload key 3>: '<payload key expected value>'
-          <github event payload key 4>: '<payload key expected value>'
+      In Progress:
+        - eventName: pull_request
+          action: opened
+        - eventName: pull_request
+          action: synchronize
+      Done:
+        - eventName: pull_request
+          action: closed
+          payload:
+            pull_request:
+              merged: true

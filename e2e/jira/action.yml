@@ -5,7 +5,7 @@ inputs:
     description: auto uses a valid cache or cold setup; cold always rebuilds; restore requires a valid cache
     default: auto
   fixture-key:
-    description: Exact cache key to restore, for a required producer/consumer verification
+    description: Exact cache key to restore; requires mode restore for producer/consumer verification
     default: ''
 outputs:
   base-url:
@@ -29,7 +29,14 @@ runs:
       env:
         HARNESS: ${{ github.action_path }}/harness.mjs
         JIRA_E2E_ROOT: ${{ runner.temp }}/jira-e2e
-      run: node "$HARNESS" init
+        REQUESTED_KEY: ${{ inputs.fixture-key }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        if [ -n "$REQUESTED_KEY" ] && [ "$MODE" != restore ]; then
+          echo '::error::An explicit fixture-key requires mode: restore.'
+          exit 1
+        fi
+        node "$HARNESS" init
     - name: Restore Docker image layers
       id: images
       uses: actions/cache/restore@v6
@@ -53,6 +60,13 @@ runs:
         path: ${{ steps.init.outputs.fixture-path }}
         key: ${{ inputs.fixture-key || steps.init.outputs.fixture-prefix }}
         restore-keys: ${{ inputs.fixture-key == '' && steps.init.outputs.fixture-prefix || '' }}
+    - name: Require the exact requested fixture
+      if: inputs.fixture-key != ''
+      shell: bash
+      env:
+        REQUESTED_KEY: ${{ inputs.fixture-key }}
+        MATCHED_KEY: ${{ steps.fixture.outputs.cache-matched-key }}
+      run: test "$REQUESTED_KEY" = "$MATCHED_KEY"
     - name: Install setup browser
       if: inputs.mode != 'restore'
       shell: bash

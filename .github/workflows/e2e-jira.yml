@@ -39,6 +39,32 @@ jobs:
           mode: ${{ inputs.mode || 'auto' }}
       - name: Exercise packaged action and verify Jira effects
         run: yarn e2e:test
+      - name: Arrange native action smoke test
+        id: fixture
+        run: node e2e/in-place.mjs arrange
+      - name: Execute the action through its GitHub manifest
+        id: action
+        uses: ./
+        with:
+          issues: ${{ steps.fixture.outputs.issue_key }}
+          jira_base_url: ${{ steps.jira.outputs.base-url }}
+          jira_user_email: admin
+          jira_api_token: admin
+          fail_on_error: 'true'
+          jira_transitions_yaml: |
+            projects:
+              E2E:
+                ignored_states: []
+                to_state:
+                  In Progress:
+                    - eventName: pull_request
+                    - eventName: push
+                    - eventName: workflow_dispatch
+      - name: Assert the native action changed Jira and reported the change
+        env:
+          ISSUE_KEY: ${{ steps.fixture.outputs.issue_key }}
+          ACTION_OUTPUTS: ${{ steps.action.outputs.issueOutputs }}
+        run: node e2e/in-place.mjs verify
       - name: Collect diagnostics
         if: failure() && env.JIRA_E2E_HARNESS != ''
         run: node "$JIRA_E2E_HARNESS" logs

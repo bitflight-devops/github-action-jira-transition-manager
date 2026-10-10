@@ -3,7 +3,16 @@
  * Based on jira.js library types for accurate mocking
  */
 
-import type { Issue, IssueTransition, Project, StatusCategory, Transitions, Version } from 'jira.js/version2';
+import type { Version2Models } from 'jira.js';
+
+type Issue = Version2Models.Issue;
+type IssueTransition = Version2Models.IssueTransition;
+type Project = Version2Models.Project;
+type StatusCategory = Version2Models.StatusCategory;
+type Transitions = Version2Models.Transitions;
+type Version = Version2Models.Version;
+type FixVersion = Version2Models.FixVersion;
+type IssueFixture = Omit<Partial<Issue>, 'fields'> & { fields?: Partial<Issue['fields']> };
 
 // Status Categories
 export const statusCategories: Record<string, StatusCategory> = {
@@ -43,7 +52,7 @@ export const mockProjectUnicorn: Partial<Project> = {
 };
 
 // Version fixtures for FixVersion testing
-export const mockVersions: Version[] = [
+export const mockVersions: (Version & FixVersion)[] = [
   {
     id: '10100',
     name: '1.0.0',
@@ -82,8 +91,8 @@ export function createMockIssue(overrides: {
   statusName?: string;
   statusId?: string;
   projectKey?: string;
-  fixVersions?: Version[];
-}): Partial<Issue> {
+  fixVersions?: FixVersion[];
+}): IssueFixture {
   const statusId = overrides.statusId || '1';
   const statusName = overrides.statusName || 'To Do';
   const projectKey = overrides.projectKey || 'DVPS';
@@ -211,15 +220,17 @@ projects:
         - eventName: pull_request
           action: 'opened'
         - eventName: pull_request
-          action: 'synchronized'
+          action: 'synchronize'
       'testing':
         - eventName: pull_request
           payload:
-            merged: true
+            pull_request:
+              merged: true
           action: 'closed'
         - eventName: pull_request_review
           payload:
-            state: 'APPROVED'
+            review:
+              state: 'approved'
   DVPS:
     ignored_states:
       - 'done'
@@ -233,20 +244,22 @@ projects:
         - eventName: pull_request
           action: 'opened'
         - eventName: pull_request
-          action: 'synchronized'
+          action: 'synchronize'
       'testing':
         - eventName: pull_request
           payload:
-            merged: true
+            pull_request:
+              merged: true
           action: 'closed'
         - eventName: pull_request_review
           payload:
-            state: 'APPROVED'
+            review:
+              state: 'approved'
 `;
 
 // Factory for creating mock Jira client
 export function createMockJiraClient(overrides?: {
-  issues?: Map<string, Partial<Issue>>;
+  issues?: Map<string, IssueFixture>;
   transitions?: Transitions;
   versions?: Version[];
 }) {

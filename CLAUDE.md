@@ -15,11 +15,11 @@ projects:
       - Done
     to_state:
       'In Progress':
-        - pull_request:
-            action: opened
+        - eventName: pull_request
+          action: opened
       'In Review':
-        - pull_request:
-            action: ready_for_review
+        - eventName: pull_request
+          action: ready_for_review
 ```
 
 ## Architecture
@@ -46,7 +46,7 @@ const client = new Version2Client({
 // Use client.issues, client.projects, client.projectVersions, etc.
 ```
 
-**Data Center Limitation**: jira.js is designed for Jira Cloud. For project creation on Data Center, it only maps `leadAccountId` (Cloud account ID), not `lead` (username string). The E2E client (`e2e/scripts/jira-client.ts`) works around this by using raw HTTP requests for Data Center project creation. See `createProjectDirect()` method.
+**Data Center fixture**: the shared fixture in `e2e/jira/` uses the Data Center REST contract (including the project `lead` username). Test fixture setup and independent state assertions use native HTTP; production action calls remain in `src/Jira.ts`.
 
 ## Commands
 
@@ -68,21 +68,15 @@ yarn test
 yarn test:watch
 yarn test -- --testNamePattern="pattern" # Run specific test
 
-# E2E tests (requires Docker and Playwright)
-yarn e2e:up           # Start Jira + MySQL containers
-yarn e2e:setup        # Run Playwright setup wizard automation
-yarn e2e:wait         # Wait for Jira API ready
-yarn e2e:seed         # Create test project/issues
-yarn e2e:test         # Run E2E test suite
-yarn e2e:logs         # Show Docker container logs
-yarn e2e:down         # Stop containers
-yarn e2e:all          # Full E2E sequence (up → setup → wait → seed → test)
-yarn e2e:fast         # Fast E2E (restore from snapshots if valid, else full setup)
-
-# E2E snapshots (Docker volume caching for faster CI)
-yarn e2e:snapshot:check   # Check if snapshots are valid
-yarn e2e:snapshot:restore # Restore from cached snapshots
-yarn e2e:snapshot:save    # Save current Docker volumes as snapshots
+# E2E tests (requires Docker Compose and Node 24.19+)
+yarn e2e:prepare         # Restore or cold-prepare, seed, save, restore and verify Jira
+yarn e2e:test            # Execute dist/index.js and check real Jira state
+yarn e2e:logs            # Collect container diagnostics
+yarn e2e:down            # Remove this environment and its writable volumes
+yarn e2e:all             # Build, prepare, and test
+yarn e2e:fixture:test    # Test corruption/readiness checks without Docker
+yarn e2e:fixture:check   # Validate the saved fixture manifest and checksums
+yarn e2e:fixture:restore # Require a saved fixture and restore it into fresh volumes
 ```
 
 ## Testing
@@ -93,26 +87,17 @@ Located in `__tests__/`. Uses Vitest with mocked Jira client via `vi.mock('../sr
 
 ### E2E Tests
 
-Located in `e2e/`. Uses a Dockerized Jira Data Center instance (`haxqer/jira:9.17.5`).
+`e2e/jira/` is the canonical shared fixture for the Jira action repositories. It uses digest-pinned official Jira Software 10.3 LTS and PostgreSQL 16, with Atlassian's published three-hour host test license. Read `e2e/jira/README.md` for the fixture contract and local commands.
 
-**E2E Scripts** (`e2e/scripts/`):
+`e2e/tests/` executes the packaged `dist/index.js` with realistic GitHub webhook and runner files. Native HTTP prepares unique issues and independently checks status, changelog, failure outputs, ignored states, and idempotence. A separate workflow smoke test runs `uses: ./` and validates its effects.
 
-- `setup-jira-playwright.ts` - Automates Jira setup wizard via headless Chromium (handles XSRF)
-- `jira-client.ts` - E2E test client using jira.js (same library as main action)
-- `seed-jira.ts` - Creates test project, versions, and issues
-- `wait-for-jira.ts` - Polls until Jira API is ready
-
-**CI Workflow** (`.github/workflows/e2e-jira.yml`):
-
-- Fast path: Restore from cached Docker volume snapshots
-- Slow path: Full Jira setup from scratch
+The fixture lifecycle workflow proves cold setup and a required cache restore on a fresh runner. The action workflow restores a compatible fixture or builds a new one. Action assertion failures never trigger a setup retry. Bundled output must match a frozen install and fresh build.
 
 ## Build and TypeScript Configuration
 
 - **Build System**: Rollup with TypeScript plugin (see `rollup.config.ts`)
 - **Output Format**: ESM (`dist/index.js`)
 - **tsconfig.json**: Main action code configured for ESM (`module: ESNext`, `moduleResolution: Bundler`)
-- **e2e/tsconfig.json**: E2E scripts (separate TypeScript compilation to `e2e/dist/`)
 
 ## CI/CD Pipeline Monitoring
 
@@ -122,6 +107,6 @@ For monitoring GitHub Actions workflows, tracing errors, and collecting logs usi
 
 ## Notes
 
-- The action requires Node 22+
+- The action runs on Node 24; development and CI use Node 24.19+
 - Pre-commit hooks run lint-staged, build, and doc generation
 - Commits use conventional commit format (commitlint enforced)
