@@ -77,13 +77,34 @@ jobs:
             ${{ steps.tag_version.outputs.changelog }}
         run: |
           set -euo pipefail
+          git fetch --tags origin
+          next_version=$(node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const parse = (value) => /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
+            ? value.split('.').map(BigInt) : null;
+          let highest = parse(require('./package.json').version);
+          if (!highest) throw new Error('The package version must be a stable semantic version');
+          for (const tag of execFileSync('git', ['tag', '--list', 'v*'], { encoding: 'utf8' }).trim().split('\n')) {
+            const candidate = parse(tag.slice(1));
+            if (!candidate) continue;
+            for (let index = 0; index < 3; index++) {
+              if (candidate[index] === highest[index]) continue;
+              if (candidate[index] > highest[index]) highest = candidate;
+              break;
+            }
+          }
+          highest[2] += 1n;
+          console.log(highest.join('.'));
+          NODE
+          )
           # preversion runs unit tests; version updates the generated documentation.
-          yarn version --patch --message "${CHANGELOG}"
+          yarn version --new-version "$next_version" --message "${CHANGELOG}"
           release_version=$(node -p 'require("./package.json").version')
           if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo '::error::The release version is not a stable semantic version.'
             exit 1
           fi
+          test "$release_version" = "$next_version"
           release_tag="v${release_version}"
           release_commit=$(git rev-parse HEAD)
           test "$(git rev-parse "${release_tag}^{commit}")" = "$release_commit"
