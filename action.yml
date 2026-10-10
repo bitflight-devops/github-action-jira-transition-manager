@@ -15,17 +15,17 @@ inputs:
     required: false
   jira_base_url:
     description: >
-      The Jira cloud base url including protocol i.e. 'https://company.atlassian.net'
+      The Jira Cloud or Data Center base URL including protocol, e.g. 'https://company.atlassian.net'
       or use environment variable JIRA_BASE_URL
     required: false
   jira_user_email:
     description: >
-      The Jira cloud user email address
+      The Jira Cloud user email address or Data Center username for Basic authentication
       or use environment variable JIRA_USER_EMAIL
     required: false
   jira_api_token:
     description: >
-      The Jira cloud user api token
+      The Jira Cloud API token or Data Center user password for Basic authentication
       or use environment variable JIRA_API_TOKEN
     required: false
   fail_on_error:

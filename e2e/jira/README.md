@@ -51,7 +51,7 @@ In this repository:
 
 Other repositories use `bitflight-devops/github-action-jira-transition-manager/e2e/jira@<reviewed-full-commit-sha>`. Pin the shared code revision when updating a consumer. The action exports `E2E_JIRA_BASE_URL`, `E2E_JIRA_USERNAME`, `E2E_JIRA_PASSWORD`, `JIRA_E2E_HARNESS`, and the owned working directory/project for later steps. Outputs include `fixture-source`, `fixture-key`, `base-url`, and `artifact-path`.
 
-Modes are `auto`, `cold`, and `restore`. An explicit `fixture-key` must match the restored cache exactly. The normal lookup uses only the compatible fingerprint prefix. There is no broad fallback to an older format or different Jira version.
+Modes are `auto`, `cold`, and `restore`. An explicit `fixture-key` requires `mode: restore` and must match the restored cache exactly. The normal lookup uses only the compatible fingerprint prefix. There is no broad fallback to an older format or different Jira version.
 
 Caches are scoped by GitHub to their repository and ref. Each action repository therefore has its own image/fixture cache; the shared action centralizes the implementation. Default-branch runs create caches usable by later pull requests. A pull request's cache does not promote itself into the default branch. Cache keys include immutable images, all setup/seed/manifest logic, the public license, and the browser lockfile. Each new fixture gets a unique run key, allowing replacement of an unusable prior fixture without mutating an existing cache.
 
