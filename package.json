@@ -40,7 +40,7 @@
     "preversion": "echo 'Running test';yarn test",
     "version": "yarn generate-docs",
     "postversion": "echo \"Prepared release version $npm_package_version\"",
-    "generate-docs": "github-action-readme-generator --version_source package-json && node -e \"const fs = require('node:fs'); const path = '.github/ghadocs/branding.svg'; fs.writeFileSync(path, fs.readFileSync(path, 'utf8').trimEnd() + '\\n');\" && biome format --write .ghadocs.json README.md && git add .ghadocs.json README.md .github/ghadocs/branding.svg",
+    "generate-docs": "github-action-readme-generator --version_source package-json && node -e 'const fs = require(\"node:fs\"); const path = \".github/ghadocs/branding.svg\"; let index = 0; const svg = fs.readFileSync(path, \"utf8\").replace(/<svg\\b[^>]*>/g, tag => index++ ? tag.replace(\"<svg\", \"<svg aria-hidden=\\\"true\\\"\") : tag + \"<title>Jira Transition Manager</title>\"); fs.writeFileSync(path, svg.trimEnd() + \"\\n\");' && biome format --write .ghadocs.json README.md && git add .ghadocs.json README.md .github/ghadocs/branding.svg",
     "prepare": "test -n \"$CI\" || (husky && git config --global rebase.autosquash true)",
     "pre-push": "echo 'Running pre-push checks'; exit 0",
     "e2e:test": "NODE_ENV=testing vitest run --config vitest.e2e.config.ts",
