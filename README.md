@@ -108,7 +108,7 @@ The following sections are generated from [action.yml](action.yml).
 <!-- start usage -->
 
 ```yaml
-- uses: bitflight-devops/github-action-jira-transition-manager@v1.1.6
+- uses: bitflight-devops/github-action-jira-transition-manager@v1.1.8
   with:
     # Description: A comma delimited list of one or more Jira issues to be
     # transitioned
