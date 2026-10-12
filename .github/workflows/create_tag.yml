@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create or resume the GitHub release
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ needs.tag.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.tag.outputs.commit }}
@@ -175,7 +175,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ needs.tag.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.tag.outputs.commit }}

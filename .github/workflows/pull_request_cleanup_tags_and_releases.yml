@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Validate ownership and delete only the named test release and tag
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           TEST_TAG: ${{ inputs.tag }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
