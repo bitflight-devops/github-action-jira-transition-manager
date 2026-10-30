@@ -3,8 +3,8 @@ name: Verify published action
 on:
   push:
     tags:
-      - 'v*'
-      - '!v*-*'
+      - "v*"
+      - "!v*-*"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: '24.19.0'
+          node-version: "24.19.0"
       - name: Verify immutable tag, version, release notes and packaged entry point
         uses: actions/github-script@v9
         with:

@@ -2,8 +2,8 @@ name: Controlled release publication test
 on:
   pull_request:
     paths:
-      - '.github/workflows/pull_request_cleanup_tags_and_releases.yml'
-      - '.github/workflows/test-release-publication.yml'
+      - ".github/workflows/pull_request_cleanup_tags_and_releases.yml"
+      - ".github/workflows/test-release-publication.yml"
   workflow_dispatch:
 
 permissions:
