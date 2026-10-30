@@ -133,7 +133,8 @@
     "sinon": "^22.1.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   },
   "optionalDependencies": {
     "@swc/core-darwin-x64": "^1.16.13"
