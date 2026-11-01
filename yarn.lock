@@ -885,10 +885,10 @@
   resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.16.20.tgz#731515fbfd3ba26cd0cb3afc1e6835f32b3cd565"
   integrity sha512-ho/LkT1Q3beSBeZGNZnm1mVbh5bKZHC0UGHtK3MswqOylbHtZoMXJBL40N8JpDj5SBxwECmdNEyXnU9HJ4F6RA==
 
-"@swc/core-darwin-x64@^1.16.18":
-  version "1.16.18"
-  resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.16.18.tgz#3e0d72406dd4cb2fd22d62fb822612d2f7179156"
-  integrity sha512-tuwxXi+sjxxTAi7GP3NeQXQxOf4SXSiFxKAMYLBdoy7JqGYby6uSDXojcFoLOhSp7oiNGstnaFXxfbP0Hpro9w==
+"@swc/core-darwin-x64@^1.16.20":
+  version "1.16.21"
+  resolved "https://registry.yarnpkg.com/@swc/core-darwin-x64/-/core-darwin-x64-1.16.21.tgz#f92fe5c09c8b12558841acefd8866455d8da399d"
+  integrity sha512-KqCJ04pMYDBUYpAOFGUFR8TEjqo4h0Vtwe/za9xNRDKsxSDnjgM7HVhfO0uNNpMMlM2ao2E6d0iLpApIRvNGnA==
 
 "@swc/core-linux-arm-gnueabihf@1.16.20":
   version "1.16.20"
@@ -2064,10 +2064,10 @@ isexe@^2.0.0:
   resolved "https://registry.yarnpkg.com/isexe/-/isexe-2.0.0.tgz#e8fbf374dc556ff8947a10dcb0572d633f2cfa10"
   integrity sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==
 
-jira.js@^6.3.0:
-  version "6.3.0"
-  resolved "https://registry.yarnpkg.com/jira.js/-/jira.js-6.3.0.tgz#d3b594e533bed1a98df3889fe16d98104afbf92b"
-  integrity sha512-Ig36ViGPxgXrVfH9E4wIP7vWuIfAYBDAhI2sNnCPq8X3ymrPbc/7Y1LdDKmFXSyEZPcnHHf5aQq0LsXKbBghnQ==
+jira.js@^6.4.0:
+  version "6.4.0"
+  resolved "https://registry.yarnpkg.com/jira.js/-/jira.js-6.4.0.tgz#ff9dfb9728b515d740c0a56e3eb32d47980e6ed4"
+  integrity sha512-ufnPt3OhLW8B+4sT89E/uqC0k8MOWe8xlCZLmPLNIX9sypeSUPdG1J2V8+hBspcfV3kq9mTqSnJZru8WLHGM6Q==
   dependencies:
     zod "^4.6.5"
 
