@@ -6,7 +6,7 @@ inputs:
     default: auto
   fixture-key:
     description: Exact cache key to restore; requires mode restore for producer/consumer verification
-    default: ''
+    default: ""
 outputs:
   base-url:
     description: Jira REST and browser base URL on the runner

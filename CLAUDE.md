@@ -14,10 +14,10 @@ projects:
     ignored_states:
       - Done
     to_state:
-      'In Progress':
+      "In Progress":
         - eventName: pull_request
           action: opened
-      'In Review':
+      "In Review":
         - eventName: pull_request
           action: ready_for_review
 ```

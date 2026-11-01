@@ -7,7 +7,6 @@ This document tracks the updates made to bring the E2E test harness to 2026 stan
 ### Actions Version Updates
 
 All GitHub Actions have been updated to their latest stable versions as of January 2026 (verified via GitHub API):
-
 - **actions/checkout**: `v3` → `v6.0.1` (latest stable, released December 2025)
 - **actions/setup-node**: `v4` → `v6.2.0` (latest stable, released January 2026)
 - **actions/upload-artifact**: `v4` → `v6.0.0` (latest stable, Node.js 24 support, released December 2025)
@@ -59,7 +58,6 @@ Our npm scripts already use the modern `docker compose` syntax.
 ### Initial Oversight
 
 The first iteration of this PR used outdated versions (PostgreSQL 14.10, Jira 9.12.0, GitHub Actions v3/v4) instead of the latest 2026 releases. This occurred because:
-
 1. **Lack of verification**: Initial versions were selected from training data without runtime verification
 2. **No API checks**: Did not query GitHub API or Docker Hub to confirm latest releases
 3. **Assumption-based selection**: Assumed recent versions from training rather than verifying current releases
@@ -78,7 +76,6 @@ The first iteration of this PR used outdated versions (PostgreSQL 14.10, Jira 9.
 ### Best Practices Going Forward
 
 When selecting dependencies and tool versions:
-
 1. **Always verify via API** - Don't trust training data for current versions
 2. **Document verification method** - Show how versions were confirmed
 3. **Use official sources** - GitHub API, Docker Hub, official docs
@@ -92,28 +89,24 @@ This ensures future implementations start with truly current versions rather tha
 ### Why These Versions?
 
 **PostgreSQL 18.1**:
-
 - Latest stable release (January 2026) with improved query performance
 - Better JSON support for modern application patterns
 - Enhanced security features and performance improvements
 - Full compatibility with Jira 10.x
 
 **Jira Software 10.5.0**:
-
 - Latest Data Center version (January 2026)
 - Improved REST API performance
 - Better compatibility with modern authentication methods
 - Enhanced project and version management features
 
 **Node.js 22**:
-
 - Current LTS release (2026)
 - Native TypeScript type stripping support
 - Improved ES module handling
 - Better performance and security
 
 **GitHub Actions Latest Versions**:
-
 - Security patches and vulnerability fixes
 - Performance improvements
 - New features and better error messages
@@ -124,7 +117,6 @@ This ensures future implementations start with truly current versions rather tha
 ### Breaking Changes
 
 None. All updates are backward compatible:
-
 - Docker Compose format change is transparent (no version field needed)
 - PostgreSQL 17 is fully compatible with Jira's requirements
 - Jira 10.4.0 maintains API compatibility with earlier versions
@@ -133,7 +125,6 @@ None. All updates are backward compatible:
 ### Testing Required
 
 While these updates should work seamlessly, verify:
-
 1. Docker Compose starts containers successfully
 2. Jira initializes and connects to PostgreSQL
 3. E2E tests pass with the new versions
@@ -144,7 +135,6 @@ While these updates should work seamlessly, verify:
 ### For Local Development
 
 If you encounter issues running the E2E tests locally:
-
 1. **Docker Compose format**: Ensure Docker Desktop 4.0+ or Docker CLI with Compose V2 is installed
 2. **PostgreSQL**: If compatibility issues arise, can roll back to `17.x-alpine` or `16.x-alpine`
 3. **Jira**: If Jira 10.5.0 has issues, can use `10.4.0`, `10.0.0` or `9.17.0`
@@ -153,7 +143,6 @@ If you encounter issues running the E2E tests locally:
 ### For CI (GitHub Actions)
 
 GitHub-hosted runners automatically provide:
-
 - Latest Docker with Compose V2
 - Configurable Node.js versions via actions/setup-node
 - No manual Docker installation required

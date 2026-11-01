@@ -2,8 +2,8 @@ name: Jira Transition Manager
 author: bitflight-devops
 description: This action will transition the list of Jira issues provided between states, or it will display the available transitions and the current issue state.
 branding:
-  icon: 'chevron-right'
-  color: 'blue'
+  icon: "chevron-right"
+  color: "blue"
 inputs:
   issues:
     description: A comma delimited list of one or more Jira issues to be transitioned
@@ -38,5 +38,5 @@ outputs:
       A JSON list of Jira Issues and their transition details
 
 runs:
-  using: 'node24'
-  main: './dist/index.js'
+  using: "node24"
+  main: "./dist/index.js"

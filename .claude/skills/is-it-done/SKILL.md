@@ -1,4 +1,5 @@
 ---
+
 name: is-it-done
 description: Rigorous self-assessment to verify if a task is truly complete and working
 ---
@@ -10,7 +11,6 @@ description: Rigorous self-assessment to verify if a task is truly complete and 
 ### 1. TASK IDENTIFICATION
 
 What type of task am I working on?
-
 - [ ] **FIX**: Resolving a bug or broken functionality
 - [ ] **FEATURE**: Adding new functionality
 - [ ] **REFACTOR**: Restructuring existing code
@@ -21,7 +21,6 @@ What type of task am I working on?
 ### 2. FUNDAMENTAL UNDERSTANDING CHECK
 
 **Do I understand that exit code 0 means:**
-
 - ✅ The command executed without throwing an uncaught exception
 - ✅ The process terminated normally (not crashed, not killed)
 - ❌ NOT that the program did what it was supposed to do
@@ -29,7 +28,6 @@ What type of task am I working on?
 - ❌ NOT that the output is correct
 
 **My definitions MUST be:**
-
 - **"works"** = executes AND produces expected behavior when used in ALL functional scenarios
 - **"fixed"** = original problem NO LONGER occurs when tested in realistic scenario
 - **NOT** "passes linters" or "compiles without errors"
@@ -80,7 +78,6 @@ What type of task am I working on?
 ### 4. QUALITY GATES ASSESSMENT
 
 **Have I verified against**
-
 - [ ] Pre-commit hooks (if they exist)
 - [ ] Unit tests
 - [ ] Integration tests
@@ -92,7 +89,6 @@ What type of task am I working on?
 ### 5. EVIDENCE COLLECTION
 
 **What evidence can I provide that this ACTUALLY works?**
-
 - [ ] Terminal output showing the problem reproducing
 - [ ] Terminal output showing the problem fixed
 - [ ] Test execution results (not just exit codes)
@@ -105,29 +101,24 @@ What type of task am I working on?
 As an Engineer and Scientist, the user expects:
 
 **Rigor**:
-
 - [ ] Have I tested systematically, not randomly?
 - [ ] Have I verified claims with evidence, not assumptions?
 
 **Reproducibility**:
-
 - [ ] Can the user reproduce my verification steps?
 - [ ] Are my test scenarios clearly defined?
 
 **Completeness**:
-
 - [ ] Have I tested the full scope of changes?
 - [ ] Have I considered unintended side effects?
 
 **Honesty**:
-
 - [ ] Am I being truthful about what I've actually tested?
 - [ ] Am I distinguishing between "should work" and "verified to work"?
 
 ### 7. FINAL ASSESSMENT
 
 **Can I honestly answer YES to ALL of these?**
-
 - [ ] I have EXECUTED the code in its intended context
 - [ ] I have OBSERVED the expected behavior
 - [ ] I have TESTED failure scenarios

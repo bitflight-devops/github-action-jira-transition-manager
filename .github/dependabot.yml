@@ -1,52 +1,52 @@
 version: 2
 updates:
-  - package-ecosystem: 'github-actions'
-    directory: '/'
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: 'weekly'
-      day: 'monday'
+      interval: "weekly"
+      day: "monday"
     assignees:
-      - 'Jamie-BitFlight'
+      - "Jamie-BitFlight"
     reviewers:
-      - 'Jamie-BitFlight'
+      - "Jamie-BitFlight"
     labels:
-      - 'github-actions'
-      - 'dependencies'
+      - "github-actions"
+      - "dependencies"
     commit-message:
-      prefix: 'build'
-      include: 'scope'
+      prefix: "build"
+      include: "scope"
     groups:
       github-actions:
         patterns:
-          - '*'
+          - "*"
     open-pull-requests-limit: 10
 
-  - package-ecosystem: 'npm'
-    directory: '/'
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
-      interval: 'weekly'
-      day: 'monday'
+      interval: "weekly"
+      day: "monday"
     assignees:
-      - 'Jamie-BitFlight'
+      - "Jamie-BitFlight"
     reviewers:
-      - 'Jamie-BitFlight'
+      - "Jamie-BitFlight"
     labels:
-      - 'npm'
-      - 'dependencies'
+      - "npm"
+      - "dependencies"
     commit-message:
-      prefix: 'build'
-      prefix-development: 'build'
-      include: 'scope'
+      prefix: "build"
+      prefix-development: "build"
+      include: "scope"
     groups:
       production-dependencies:
-        dependency-type: 'production'
+        dependency-type: "production"
         update-types:
-          - 'minor'
-          - 'patch'
+          - "minor"
+          - "patch"
       dev-dependencies:
-        dependency-type: 'development'
+        dependency-type: "development"
         update-types:
-          - 'minor'
-          - 'patch'
+          - "minor"
+          - "patch"
     open-pull-requests-limit: 10
-    versioning-strategy: 'increase'
+    versioning-strategy: "increase"
