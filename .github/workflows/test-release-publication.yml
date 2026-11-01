@@ -17,14 +17,14 @@ jobs:
       tag: ${{ steps.publish.outputs.tag }}
       sha: ${{ steps.publish.outputs.sha }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Package the exact checked-out action
         run: git archive --format=tar.gz --output=action.tar.gz HEAD action.yml dist package.json README.md LICENSE
       - name: Publish a unique prerelease without moving any existing ref
         id: publish
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('node:fs');
@@ -74,7 +74,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         env:
           TEST_TAG: ${{ needs.publish.outputs.tag }}
         with:
