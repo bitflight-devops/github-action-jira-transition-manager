@@ -12,6 +12,8 @@ This action will transition the list of Jira issues provided between states, or 
 
 Map GitHub events to Jira workflow states for the issue keys you supply. The action uses the Node.js 24 runtime and accepts Jira Cloud email/API-token credentials or Jira Data Center username/password credentials through Basic authentication.
 
+The Jira.js 6 client supports Jira Cloud and Jira Data Center 10 or newer. It discovers the deployment once through `/rest/api/2/serverInfo`, then uses the supported Cloud v3 or Data Center v2 endpoints. The configured account must be able to read server information as well as issues. Discovery and authentication failures are reported rather than retried against a different API. Standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` settings (including lowercase variants) are honored through Node 24’s native proxy support.
+
 ## Quick start
 
 Check out the repository so the action can read `.github/github_event_jira_transitions.yml`. Supply your issue keys and Jira connection details:
@@ -108,7 +110,7 @@ The following sections are generated from [action.yml](action.yml).
 <!-- start usage -->
 
 ```yaml
-- uses: bitflight-devops/github-action-jira-transition-manager@v1.1.13
+- uses: bitflight-devops/github-action-jira-transition-manager@v1.1.15
   with:
     # Description: A comma delimited list of one or more Jira issues to be
     # transitioned
