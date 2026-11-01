@@ -62037,7 +62037,7 @@ class Doc {
 const version = {
     major: 4,
     minor: 6,
-    patch: 6,
+    patch: 7,
 };
 
 const $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
