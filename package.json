@@ -1,6 +1,6 @@
 {
   "name": "github-action-jira-transition-manager",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "description": "This action will transition the list of Jira issues provided between states, or it will display the available transitions and the current issue state.",
   "type": "module",
   "main": "dist/index.js",
@@ -133,8 +133,8 @@
     "sinon": "^22.1.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.2",
-    "vitest": "^5.0.5",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   },
   "optionalDependencies": {
     "@swc/core-darwin-x64": "^1.16.18"
