@@ -67363,9 +67363,8 @@ class OAuthError extends Error {
  * They are one error rather than two on purpose: from a caller's side both mean "the API answered 2xx and the value
  * cannot be trusted", and nobody should have to know which validator this library uses in order to catch that.
  *
- * `report` names paths and types and never the values at them. The previous version of this error carried the entire
- * response body, which put issue summaries, display names and custom field contents into every log line and error
- * tracker that saw it — a schema bug turning into someone else's data incident.
+ * `report` names paths and types and never the values at them. Products preserving the legacy contract also retain
+ * the raw response in `body`; other products leave it empty. The string constructor retains a supplied legacy body.
  *
  * Distinct from `ApiError`, which means the request itself failed.
  *
@@ -67375,10 +67374,12 @@ class SchemaMismatchError extends Error {
     [ERROR_KINDS] = ['schemaMismatch'];
     /** Which fields disagreed with the schema, by path and type. Paste-able into a bug report. */
     report;
+    body;
     constructor(message, report, options) {
         super(message, options);
         this.name = 'SchemaMismatchError';
-        this.report = report;
+        this.report = typeof report === 'string' ? { endpoint: '', issues: [] } : report;
+        this.body = typeof report === 'string' ? report : options?.body ?? '';
         Object.setPrototypeOf(this, new.target.prototype);
     }
     static [Symbol.hasInstance](value) {
@@ -68773,7 +68774,7 @@ function createClient(config) {
                 return BlobSchema.parse(await response.blob());
             }
             const isJson = contentType !== null && isJsonMediaType(contentType);
-            if (contentType && !isJson) {
+            if (contentType && !isJson && !requestConfig.responseParser) {
                 if (requestConfig.schema) {
                     throw new SchemaMismatchError(`Expected a JSON response to validate against the schema, got ${contentType}`, {
                         endpoint: `${requestConfig.method ?? 'GET'} ${requestConfig.url}`,
@@ -68783,7 +68784,10 @@ function createClient(config) {
                 return undefined;
             }
             let data;
-            if (isJson) {
+            if (requestConfig.responseParser) {
+                data = await requestConfig.responseParser(response);
+            }
+            else if (isJson) {
                 const text = await response.text();
                 try {
                     data = JSON.parse(text);
@@ -69396,6 +69400,7 @@ const ProjectSchema = apiObject({
      */
     versions: array(VersionSchema).optional(),
     entityId: string().optional(),
+    isLiveTemplate: boolean().optional(),
 });
 
 /**
