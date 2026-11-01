@@ -26,25 +26,16 @@ projects:
 
 ### Core Classes (src/)
 
-- **`Jira`** - Wrapper around `jira.js` Version2Client. All Jira API calls go through here.
+- **`Jira`** - Wrapper around the supported `jira.js` Cloud and Data Center functions. All Jira API calls go through here.
 - **`Issue`** - Represents a single Jira issue. Handles fetching issue data, determining available transitions, and applying transitions.
 - **`TransitionEventManager`** - Loads YAML config and matches GitHub event context to target Jira states.
 - **`Action`** - Entry point. Parses issue list, creates Issue objects, executes transitions in parallel.
 
 ### Key Dependency: jira.js
 
-This project uses `jira.js` v5 for all Jira API interactions. When adding Jira functionality, use the existing `Version2Client` patterns in `src/Jira.ts` rather than raw HTTP calls. The library provides typed methods for issues, transitions, projects, versions, screens, etc.
+This project uses `jira.js` v6 for all Jira API interactions. Production requests remain in `src/Jira.ts`, using the supported functions from `jira.js/cloud`, `jira.js/server`, and the shared transport from `jira.js/core`, not raw HTTP calls.
 
-```typescript
-import { Version2Client } from 'jira.js';
-
-const client = new Version2Client({
-  host: 'https://company.atlassian.net',
-  authentication: { basic: { email, apiToken } },
-});
-
-// Use client.issues, client.projects, client.projectVersions, etc.
-```
+The wrapper discovers `deploymentType` once per action through the supported `/rest/api/2/serverInfo` endpoint. Cloud uses the Cloud v3 API; Data Center uses the server v2 API. Existing Basic-auth inputs remain unchanged: email/API token for Cloud and username/password for Data Center. Authentication and discovery errors are propagated; no endpoint fallback or host-name guessing is performed. Only the transition ID is sent in transition writes.
 
 **Data Center fixture**: the shared fixture in `e2e/jira/` uses the Data Center REST contract (including the project `lead` username). Test fixture setup and independent state assertions use native HTTP; production action calls remain in `src/Jira.ts`.
 
