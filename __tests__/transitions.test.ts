@@ -1,10 +1,9 @@
 import * as core from '@actions/core';
 import type { context } from '@actions/github';
-import type { Version2Models } from 'jira.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import type { Args } from '../src/@types';
 import { Action } from '../src/action';
+import type { JiraTransition } from '../src/Jira';
 import { checkConditions } from '../src/TransitionEventManager';
 
 type Context = typeof context;
@@ -35,7 +34,7 @@ vi.mock('@actions/core', () => ({
 const transitions = [
   { id: '21', name: 'Start progress', to: { name: 'In Progress' } },
   { id: '31', name: 'Resolve issue', to: { name: 'Done' } },
-] as Version2Models.IssueTransition[];
+] as JiraTransition[];
 
 const mapping = `
 projects:
@@ -102,7 +101,7 @@ describe('transition behavior', () => {
     status = 'To Do';
     jira.getIssue.mockImplementation(async (key: string) => ({ key, fields: { status: { name: status } } }));
     jira.getIssueTransitions.mockResolvedValue({ transitions });
-    jira.transitionIssue.mockImplementation(async (_key: string, transition: Version2Models.IssueTransition) => {
+    jira.transitionIssue.mockImplementation(async (_key: string, transition: JiraTransition) => {
       status = transition.to?.name ?? status;
       return {};
     });
