@@ -136,7 +136,7 @@
     "vitest": "^4.1.11"
   },
   "optionalDependencies": {
-    "@swc/core-darwin-x64": "^1.16.13"
+    "@swc/core-darwin-x64": "^1.16.18"
   },
   "resolutions": {
     "minimist": "^1.2.8",
