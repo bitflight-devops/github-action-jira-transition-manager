@@ -3,11 +3,11 @@ import type { context } from '@actions/github';
 
 type Context = typeof context;
 
-import type { Version2Models } from 'jira.js';
 import _ from 'lodash';
 
 import type { Args } from './@types';
 import type Jira from './Jira';
+import type { JiraIssue, JiraTransition } from './Jira';
 import TransitionEventManager from './TransitionEventManager';
 
 /**
@@ -51,9 +51,9 @@ export default class Issue {
 
   jira: Jira;
 
-  issueObject: Version2Models.Issue | null = null;
+  issueObject: JiraIssue | null = null;
 
-  issueTransitions: Version2Models.IssueTransition[] | undefined = undefined;
+  issueTransitions: JiraTransition[] | undefined = undefined;
 
   transitionsLogString: string[] = [];
 
@@ -138,7 +138,7 @@ export default class Issue {
    *
    * @returns The matching transition object, or undefined if no match is found
    */
-  transitionToApply(): Version2Models.IssueTransition | undefined {
+  transitionToApply(): JiraTransition | undefined {
     if (!this.toStatus) return undefined;
     return this.issueTransitions?.find(
       (transition) => transition.to?.name?.toLowerCase() === this.toStatus?.toLowerCase(),
@@ -220,7 +220,7 @@ export default class Issue {
    * @returns Array of available transitions, or undefined if none exist
    * @throws Error if no transitions are available and failOnError is enabled
    */
-  async getTransitions(): Promise<Version2Models.IssueTransition[] | undefined> {
+  async getTransitions(): Promise<JiraTransition[] | undefined> {
     const { transitions } = await this.jira.getIssueTransitions(this.issue);
 
     if (transitions == null) {
@@ -235,7 +235,7 @@ export default class Issue {
    *
    * @returns The Jira issue object with all fields
    */
-  async getJiraIssueObject(): Promise<Version2Models.Issue> {
+  async getJiraIssueObject(): Promise<JiraIssue> {
     this.issueObject = await this.jira.getIssue(this.issue);
     return this.issueObject;
   }

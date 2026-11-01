@@ -3,15 +3,8 @@
  * Based on jira.js library types for accurate mocking
  */
 
-import type { Version2Models } from 'jira.js';
+import type { Issue, IssueTransition, Project, StatusCategory, Transitions, Version } from 'jira.js/cloud';
 
-type Issue = Version2Models.Issue;
-type IssueTransition = Version2Models.IssueTransition;
-type Project = Version2Models.Project;
-type StatusCategory = Version2Models.StatusCategory;
-type Transitions = Version2Models.Transitions;
-type Version = Version2Models.Version;
-type FixVersion = Version2Models.FixVersion;
 type IssueFixture = Omit<Partial<Issue>, 'fields'> & { fields?: Partial<Issue['fields']> };
 
 // Status Categories
@@ -52,7 +45,7 @@ export const mockProjectUnicorn: Partial<Project> = {
 };
 
 // Version fixtures for FixVersion testing
-export const mockVersions: (Version & FixVersion)[] = [
+export const mockVersions: Version[] = [
   {
     id: '10100',
     name: '1.0.0',
@@ -91,7 +84,7 @@ export function createMockIssue(overrides: {
   statusName?: string;
   statusId?: string;
   projectKey?: string;
-  fixVersions?: FixVersion[];
+  fixVersions?: Version[];
 }): IssueFixture {
   const statusId = overrides.statusId || '1';
   const statusName = overrides.statusName || 'To Do';
